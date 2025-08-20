@@ -1,0 +1,11 @@
+line-length = 100
+target-version = "py311"
+
+[lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]  # довгі рядки поки ігноруємо
+per-file-ignores = {
+  "alembic/*" = ["E402", "F401"],                # alembic env: нетопові/невикористані імпорти
+  "app/models/__init__.py" = ["F401"],           # реєстрація моделей side-effect
+  "app/main.py" = ["F401"]                       # імпорти для реєстрації моделей
+}
