@@ -1,8 +1,13 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING
 from sqlalchemy import (
     String, ForeignKey, Numeric, UniqueConstraint, Date, DateTime, func, JSON, Boolean
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base
+if TYPE_CHECKING:
+    from .supplier import Supplier
+    from .price_list import PriceList
 
 class SupplierProduct(Base):
     __tablename__ = "supplier_products"

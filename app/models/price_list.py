@@ -1,10 +1,14 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING
 from sqlalchemy import String, ForeignKey, Enum, JSON, Boolean, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from datetime import datetime
 import enum
 from app.models.base import Base
-from typing import List
 from app.models.supplier_product import SupplierProduct  # noqa: F401
+if TYPE_CHECKING:
+    from .supplier import Supplier
+    from .supplier_product import SupplierProduct
 
 class SourceType(str, enum.Enum):
     local = "local"
@@ -15,7 +19,10 @@ class SourceType(str, enum.Enum):
 class PriceList(Base):
     __tablename__ = "price_lists"
     id: Mapped[int] = mapped_column(primary_key=True)
-    supplier_id: Mapped[int] = mapped_column(ForeignKey("supplier.id", ondelete="CASCADE"), index=True)
+    supplier_id: Mapped[int] = mapped_column(
+        ForeignKey("suppliers.id", ondelete="CASCADE"),  # <-- тут має бути "suppliers.id"
+        index=True
+    )
     name: Mapped[str] = mapped_column(String(200))
     source_type: Mapped[SourceType] = mapped_column(Enum(SourceType), default=SourceType.local)
     source_config: Mapped[dict | None] = mapped_column(JSON, default=None)

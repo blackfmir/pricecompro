@@ -1,8 +1,13 @@
+
+from __future__ import annotations
+from typing import TYPE_CHECKING
 from sqlalchemy import String, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base
-from typing import List
 from app.models.supplier_product import SupplierProduct  # noqa: F401
+if TYPE_CHECKING:
+    from .price_list import PriceList
+    from .supplier_product import SupplierProduct
 
 
 class Supplier(Base):
