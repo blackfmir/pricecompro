@@ -1,0 +1,11 @@
+# venv
+.venv/
+# Python
+__pycache__/
+*.pyc
+# env
+.env
+# Alembic cache
+alembic/*.pyc
+# VSCode
+.vscode/
