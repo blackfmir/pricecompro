@@ -11,6 +11,7 @@ class SourceType(str, enum.Enum):
     parser = "parser"
 
 class PriceList(Base):
+    __tablename__ = "price_lists"
     id: Mapped[int] = mapped_column(primary_key=True)
     supplier_id: Mapped[int] = mapped_column(ForeignKey("supplier.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(200))
