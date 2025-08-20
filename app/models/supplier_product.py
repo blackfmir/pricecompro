@@ -1,4 +1,3 @@
-# app/models/supplier_product.py
 from sqlalchemy import (
     String, ForeignKey, Numeric, UniqueConstraint, Date, DateTime, func, JSON, Boolean
 )
@@ -27,13 +26,14 @@ class SupplierProduct(Base):
     jan: Mapped[str | None] = mapped_column(String(32), index=True)
     isbn: Mapped[str | None] = mapped_column(String(32), index=True)
 
-    # Назва/виробник/категорії
+    # Назви/класифікація
     name: Mapped[str | None] = mapped_column(String(512))
     brand_raw: Mapped[str | None] = mapped_column(String(128), index=True)
     brand_id: Mapped[int | None] = mapped_column(ForeignKey("manufacturers.id", ondelete="SET NULL"), index=True)
     category_raw: Mapped[str | None] = mapped_column(String(512))
-    category_path: Mapped[dict | list | None] = mapped_column(JSON)     # список шляхів/категорій
+    category_path: Mapped[dict | list | None] = mapped_column(JSON)
     category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"), index=True)
+    location: Mapped[str | None] = mapped_column(String(128))
 
     # Ціни/наявність/доставка
     price_raw: Mapped[float | None] = mapped_column(Numeric(18, 2))
@@ -42,12 +42,11 @@ class SupplierProduct(Base):
     availability_text: Mapped[str | None] = mapped_column(String(128))
     delivery_terms: Mapped[str | None] = mapped_column(String(128))
     delivery_date: Mapped[Date | None] = mapped_column(Date)
-    location: Mapped[str | None] = mapped_column(String(128))
 
-    # Описи/медіа
+    # Опис/медіа
     short_description_raw: Mapped[str | None] = mapped_column(String(2000))
-    description_raw: Mapped[str | None] = mapped_column(String)          # TEXT
-    image_urls: Mapped[list[str] | None] = mapped_column(JSON)           # масив URL
+    description_raw: Mapped[str | None] = mapped_column(String)  # TEXT
+    image_urls: Mapped[list[str] | None] = mapped_column(JSON)   # список URL
 
     # Резерв під майбутні опції/атрибути
     attributes_raw: Mapped[dict | None] = mapped_column(JSON)
@@ -59,3 +58,4 @@ class SupplierProduct(Base):
     updated_at: Mapped[object] = mapped_column(DateTime(timezone=False), onupdate=func.now())
 
     supplier: Mapped["Supplier"] = relationship(back_populates="supplier_products")
+    price_list: Mapped["PriceList"] = relationship(back_populates="supplier_products")

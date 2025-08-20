@@ -1,6 +1,9 @@
 from sqlalchemy import String, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base
+from typing import List
+from app.models.supplier_product import SupplierProduct  # noqa: F401
+
 
 class Supplier(Base):
     __tablename__ = "suppliers"
@@ -10,3 +13,9 @@ class Supplier(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     price_lists: Mapped[list["PriceList"]] = relationship(back_populates="supplier")
+
+    supplier_products: Mapped[list["SupplierProduct"]] = relationship(
+        back_populates="supplier", cascade="all, delete-orphan"
+    )
+
+    

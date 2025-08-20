@@ -3,6 +3,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from datetime import datetime
 import enum
 from app.models.base import Base
+from typing import List
+from app.models.supplier_product import SupplierProduct  # noqa: F401
 
 class SourceType(str, enum.Enum):
     local = "local"
@@ -25,3 +27,7 @@ class PriceList(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     supplier: Mapped["Supplier"] = relationship(back_populates="price_lists")
+
+    supplier_products: Mapped[list["SupplierProduct"]] = relationship(
+        back_populates="price_list"
+    )
