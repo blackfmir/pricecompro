@@ -99,3 +99,47 @@ def test_price_lists_crud():
     assert r.status_code == 200
     assert r.json() == {"ok": True}
 
+def test_import_xlsx_basic(tmp_path):
+    from openpyxl import Workbook
+    client = TestClient(app)
+
+    # supplier
+    r = client.post("/api/suppliers", json={"name": "XLSX Sup", "code": "XLSX", "active": True})
+    assert r.status_code == 200
+    supplier_id = r.json()["id"]
+
+    # price list with mapping (no header, by letters)
+    payload = {
+        "supplier_id": supplier_id,
+        "name": "XLSX PL",
+        "source_type": "local",
+        "source_config": {"sheet": {"by":"index","value":1}, "header": False, "start_row": 1},
+        "format": "xlsx",
+        "mapping": {
+            "supplier_sku": {"by":"col_letter","value":"A"},
+            "name": {"by":"col_letter","value":"B"},
+            "price_raw": {"by":"col_letter","value":"C"},
+            "currency_raw": {"by":"col_letter","value":"D"},
+            "qty_raw": {"by":"col_letter","value":"E"},
+        },
+        "active": True
+    }
+    r = client.post("/api/price-lists", json=payload)
+    assert r.status_code == 200
+    pl_id = r.json()["id"]
+
+    # build workbook in-memory
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Sheet1"
+    ws.append(["SUP-001", "Prod 1", 9.99, "PLN", 5])
+    ws.append(["SUP-002", "Prod 2", "12,50", "PLN", 7])
+    p = tmp_path / "test.xlsx"
+    wb.save(p)
+
+    with p.open("rb") as fh:
+        files = {"file": ("test.xlsx", fh.read(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
+    r = client.post(f"/api/import/{pl_id}", files=files)
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["stats"]["inserted"] >= 2

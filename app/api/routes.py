@@ -1,11 +1,14 @@
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.db.session import SessionLocal
-from app.schemas.supplier import SupplierCreate, SupplierOut, SupplierUpdate
-from app.schemas.price_list import PriceListCreate, PriceListOut, PriceListUpdate
-from app.crud import supplier as supplier_crud
 from app.crud import price_list as price_list_crud
+from app.crud import supplier as supplier_crud
+from app.db.session import SessionLocal
+from app.schemas.price_list import PriceListCreate, PriceListOut, PriceListUpdate
+from app.schemas.supplier import SupplierCreate, SupplierOut, SupplierUpdate
+from app.services.importer import import_xlsx_bytes  # NEW
 
 router = APIRouter()
 
@@ -16,24 +19,27 @@ def get_db():
     finally:
         db.close()
 
+DBSession = Annotated[Session, Depends(get_db)]
+
+
 # Suppliers
 @router.post("/suppliers", response_model=SupplierOut)
-def create_supplier(payload: SupplierCreate, db: Session = Depends(get_db)):
+def create_supplier(db: DBSession, payload: SupplierCreate):
     return supplier_crud.create(db, payload)
 
 @router.get("/suppliers", response_model=list[SupplierOut])
-def list_suppliers(q: str | None = None, db: Session = Depends(get_db)):
+def list_suppliers(db: DBSession, q: str | None = None):
     return supplier_crud.list_(db, q=q)
 
 @router.put("/suppliers/{supplier_id}", response_model=SupplierOut)
-def update_supplier(supplier_id: int, payload: SupplierUpdate, db: Session = Depends(get_db)):
+def update_supplier(db: DBSession, supplier_id: int, payload: SupplierUpdate):
     obj = supplier_crud.update(db, supplier_id, payload)
     if not obj:
         raise HTTPException(status_code=404, detail="Supplier not found")
     return obj
 
 @router.delete("/suppliers/{supplier_id}")
-def delete_supplier(supplier_id: int, db: Session = Depends(get_db)):
+def delete_supplier(db: DBSession, supplier_id: int):
     ok = supplier_crud.delete(db, supplier_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Supplier not found")
@@ -41,23 +47,146 @@ def delete_supplier(supplier_id: int, db: Session = Depends(get_db)):
 
 # Price lists
 @router.post("/price-lists", response_model=PriceListOut)
-def create_price_list(payload: PriceListCreate, db: Session = Depends(get_db)):
+def create_price_list(db: DBSession, payload: PriceListCreate):
     return price_list_crud.create(db, payload)
 
 @router.get("/price-lists", response_model=list[PriceListOut])
-def list_price_lists(supplier_id: int | None = None, db: Session = Depends(get_db)):
+def list_price_lists(db: DBSession, supplier_id: int | None = None):
     return price_list_crud.list_(db, supplier_id=supplier_id)
 
 @router.put("/price-lists/{pl_id}", response_model=PriceListOut)
-def update_price_list(pl_id: int, payload: PriceListUpdate, db: Session = Depends(get_db)):
+def update_price_list(db: DBSession, pl_id: int, payload: PriceListUpdate):
     obj = price_list_crud.update(db, pl_id, payload)
     if not obj:
         raise HTTPException(status_code=404, detail="Price list not found")
     return obj
 
 @router.delete("/price-lists/{pl_id}")
-def delete_price_list(pl_id: int, db: Session = Depends(get_db)):
+def delete_price_list(db: DBSession, pl_id: int):
     ok = price_list_crud.delete(db, pl_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Price list not found")
     return {"ok": True}
+
+@router.post("/import/{pl_id}")
+async def import_any(pl_id: int, db: DBSession, file: UploadFile = File(...)):
+    pl: PriceList | None = price_list_crud.get(db, pl_id)
+    if not pl:
+        raise HTTPException(status_code=404, detail="Price list not found")
+    if not pl.mapping:
+        raise HTTPException(status_code=400, detail="Mapping not set for this price list")
+
+    content = await file.read()
+    fmt = (pl.format or "").lower()
+
+    if fmt in {"xlsx", "xls"}:
+        items, errors = import_xlsx_bytes(
+            file_bytes=content,
+            supplier_id=pl.supplier_id,
+            price_list_id=pl.id,
+            mapping=pl.mapping,
+            source_config=pl.source_config,
+        )
+        from app.crud import supplier_product as sp_crud
+
+        stats = sp_crud.upsert_many(db, items)
+        return {
+            "price_list_id": pl.id,
+            "format": fmt,
+            "stats": stats,
+            "errors": errors[:10],
+            "preview": [i.model_dump() for i in items[:5]],
+        }
+
+    elif fmt == "csv":
+        # делегуємо на існуючий CSV-імпортер для зворотної сумісності
+        # швидкий re-use: створимо тимчасовий UploadFile-подібний об'єкт не будемо — ми вже в ендпоїнті з файлом.
+        # просто викличемо логіку CSV прямо тут.
+        import csv
+        import io
+        delimiter = (pl.source_config or {}).get("delimiter", ";")
+        reader = csv.reader(io.StringIO(content.decode("utf-8-sig", errors="replace")), delimiter=delimiter)
+        map_ = pl.mapping
+
+        def get_by_index(row: list[str], key: str):
+            spec = map_.get(key)
+            if not spec:
+                return None
+            if isinstance(spec, str):
+                return None
+            if spec.get("by") != "col_index":
+                return None
+            idx = int(spec.get("value", 0)) - 1
+            if idx < 0 or idx >= len(row):
+                return None
+            return row[idx]
+
+        def to_float(s):
+            if s is None or s == "":
+                return None
+            s = s.replace(" ", "").replace(",", ".")
+            try:
+                return float(s)
+            except:
+                return None
+
+        def split_list(s, key):
+            spec = map_.get(key) or {}
+            opts = spec.get("options") or {}
+            sep = opts.get("split")
+            if not s or not sep:
+                return None
+            return [x.strip() for x in s.split(sep) if x.strip()]
+
+        from app.schemas.supplier_product import SupplierProductCreate
+        items = []
+        errors = []
+        rownum = 0
+        for row in reader:
+            rownum += 1
+            try:
+                supplier_sku = (get_by_index(row, "supplier_sku") or "").strip()
+                if not supplier_sku:
+                    continue
+                items.append(SupplierProductCreate(
+                    supplier_id=pl.supplier_id,
+                    price_list_id=pl.id,
+                    supplier_sku=supplier_sku,
+                    manufacturer_sku=get_by_index(row, "manufacturer_sku"),
+                    mpn=get_by_index(row, "mpn"),
+                    gtin=get_by_index(row, "gtin"),
+                    ean=get_by_index(row, "ean"),
+                    upc=get_by_index(row, "upc"),
+                    jan=get_by_index(row, "jan"),
+                    isbn=get_by_index(row, "isbn"),
+                    name=get_by_index(row, "name"),
+                    brand_raw=get_by_index(row, "brand_raw"),
+                    category_raw=get_by_index(row, "category_raw"),
+                    price_raw=to_float(get_by_index(row, "price_raw")),
+                    currency_raw=(get_by_index(row, "currency_raw") or None),
+                    qty_raw=to_float(get_by_index(row, "qty_raw")),
+                    availability_text=get_by_index(row, "availability_text"),
+                    delivery_terms=get_by_index(row, "delivery_terms"),
+                    delivery_date=get_by_index(row, "delivery_date"),
+                    location=get_by_index(row, "location"),
+                    short_description_raw=get_by_index(row, "short_description_raw"),
+                    description_raw=get_by_index(row, "description_raw"),
+                    image_urls=split_list(get_by_index(row, "image_urls"), "image_urls"),
+                ))
+            except Exception as e:
+                errors.append(f"Row {rownum}: {e!r}")
+
+        from app.crud import supplier_product as sp_crud
+        stats = sp_crud.upsert_many(db, items)
+        return {
+            "price_list_id": pl.id,
+            "format": fmt,
+            "stats": stats,
+            "errors": errors[:10],
+            "preview": [i.model_dump() for i in items[:5]],
+        }
+
+    else:
+        raise HTTPException(status_code=501, detail=f"Import for format '{fmt}' not implemented yet")
+
+
