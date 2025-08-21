@@ -5,6 +5,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from starlette.staticfiles import StaticFiles
 
 from app.api.routes import router as api_router
 from app.core.config import settings
@@ -37,3 +38,5 @@ app.include_router(ui_router)
 static_dir = Path(__file__).parent / "static"
 if static_dir.is_dir():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+    app.mount("/storage", StaticFiles(directory=settings.STORAGE_DIR), name="storage")
+

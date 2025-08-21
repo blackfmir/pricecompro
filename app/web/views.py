@@ -1,7 +1,6 @@
 # app/web/views.py
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Annotated, Any, cast
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
@@ -21,6 +20,7 @@ from app.schemas.price_list import PriceListCreate, PriceListUpdate
 from app.schemas.supplier import SupplierCreate
 from app.schemas.supplier_product import SupplierProductCreate
 from app.services.importer import import_xlsx_bytes, import_xml_bytes
+from app.utils.storage import save_price_upload
 
 templates = Jinja2Templates(directory="app/web/templates")
 router = APIRouter()
@@ -161,6 +161,9 @@ def ui_price_list_edit(request: Request, db: DBSession, pl_id: int):
     url_link = src.get("url", "")
     downloaded_path = src.get("downloaded_path", "")
     ftp_cfg = src.get("ftp", {}) or {}
+    local_url = src.get("local_url", "")
+    downloaded_path = src.get("downloaded_path", "")
+    downloaded_url = src.get("downloaded_url", "")
 
     # Налаштування під формат
     sheet = src.get("sheet", {}) or {}
@@ -220,7 +223,9 @@ def ui_price_list_edit(request: Request, db: DBSession, pl_id: int):
             "format": fmt,
             "local_path": local_path,
             "url_link": url_link,
+            "local_url": local_url,
             "downloaded_path": downloaded_path,
+            "downloaded_url": downloaded_url,
             "ftp_cfg": ftp_cfg,
             "xlsx_sheet_by": xlsx_sheet_by,
             "xlsx_sheet_value": xlsx_sheet_value,
@@ -391,24 +396,22 @@ def ui_price_list_delete(request: Request, db: DBSession, pl_id: int):
 # Допоміжний тип
 FileUpload = Annotated[UploadFile, File(...)]
 
+UploadFileForm = Annotated[UploadFile, File(...)]
+
 @router.post("/ui/price-lists/{pl_id}/upload-source")
 async def ui_upload_source(request: Request, db: DBSession, pl_id: int, file: UploadFileForm):
-
     pl = price_list_crud.get(db, pl_id)
     if not pl:
         raise HTTPException(404, "Price list not found")
 
     content = await file.read()
-    safe_name = file.filename or "source.bin"
-
-    base_dir = Path("data") / "sources" / str(pl_id)
-    base_dir.mkdir(parents=True, exist_ok=True)
-    out_path = base_dir / safe_name
-    out_path.write_bytes(content)
+    path, url = save_price_upload(pl_id, file.filename or "source.bin", content)
 
     src: dict[str, Any] = cast(dict[str, Any], pl.source_config or {})
     src = dict(src)
-    src["local_path"] = str(out_path)
+    # фіксуємо і файловий шлях, і URL для відображення/завантаження
+    src["local_path"] = str(path)
+    src["local_url"] = url
 
     payload = PriceListUpdate(
         name=pl.name,
@@ -420,6 +423,7 @@ async def ui_upload_source(request: Request, db: DBSession, pl_id: int, file: Up
     )
     price_list_crud.update(db, pl_id, payload)
     return RedirectResponse(url=f"/ui/price-lists/{pl_id}/edit?msg=uploaded", status_code=303)
+
 
 
 

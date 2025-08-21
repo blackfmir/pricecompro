@@ -1,6 +1,7 @@
 from pydantic import Field
 from pydantic_settings import BaseSettings
 
+STORAGE_DIR: str = "storage"
 
 class Settings(BaseSettings):
     app_name: str = Field(default="Price Complex Processor (PriceComPro)")

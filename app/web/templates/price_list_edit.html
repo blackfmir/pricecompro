@@ -40,16 +40,19 @@
   <!-- Source-specific blocks -->
   <div id="block_local" class="grid gap-2 hidden">
     <h2 class="text-lg font-semibold">Local source</h2>
+
     <label class="grid gap-1">
       <span class="text-sm text-slate-600">Current path</span>
       <input name="local_path" class="border px-3 py-2 rounded" value="{{ local_path }}" placeholder="D:\path\file.xlsx">
     </label>
-    <form method="post" action="/ui/price-lists/{{ pl.id }}/upload-source" enctype="multipart/form-data" class="grid gap-2">
-      <span class="text-sm text-slate-600">Upload new source file</span>
-      <input type="file" name="file" class="border px-3 py-2 rounded" />
-      <button class="px-4 py-2 bg-slate-700 text-white rounded w-max mt-1">Upload</button>
-    </form>
+
+    {% if local_url %}
+      <div class="text-sm text-slate-600">
+        Download: <a href="{{ local_url }}" target="_blank" class="text-blue-700 underline">{{ local_url }}</a>
+      </div>
+    {% endif %}
   </div>
+
 
   <div id="block_http" class="grid gap-2 hidden">
     <h2 class="text-lg font-semibold">HTTP source</h2>
@@ -58,9 +61,15 @@
       <input name="link" class="border px-3 py-2 rounded" value="{{ url_link }}" placeholder="https://example.com/price.xml">
     </label>
     {% if downloaded_path %}
-    <div class="text-sm text-slate-600">Downloaded file: <code>{{ downloaded_path }}</code></div>
+      <div class="text-sm text-slate-600">Downloaded file: <code>{{ downloaded_path }}</code></div>
+    {% endif %}
+    {% if downloaded_url %}
+      <div class="text-sm text-slate-600">
+        Download: <a href="{{ downloaded_url }}" target="_blank" class="text-blue-700 underline">{{ downloaded_url }}</a>
+      </div>
     {% endif %}
   </div>
+
 
   <div id="block_ftp" class="grid gap-2 hidden">
     <h2 class="text-lg font-semibold">FTP source</h2>
@@ -189,6 +198,13 @@
     <a class="px-4 py-2 bg-slate-600 text-white rounded" href="/ui/price-lists">Back</a>
     <button class="px-4 py-2 bg-blue-600 text-white rounded">Save</button>
   </div>
+</form>
+
+<form method="post" action="/ui/price-lists/{{ pl.id }}/upload-source" enctype="multipart/form-data"
+      class="bg-white p-4 rounded-xl shadow grid gap-2 mt-4">
+  <h2 class="text-lg font-semibold">Upload new source file</h2>
+  <input type="file" name="file" class="border px-3 py-2 rounded" />
+  <button class="px-4 py-2 bg-slate-700 text-white rounded w-max">Upload</button>
 </form>
 
 <script>
