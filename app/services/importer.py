@@ -3,6 +3,7 @@ from __future__ import annotations
 from io import BytesIO
 from typing import Any
 
+from lxml import etree
 from openpyxl import load_workbook
 
 from app.schemas.supplier_product import SupplierProductCreate
@@ -161,3 +162,157 @@ def import_xlsx_bytes(
             errors.append(f"Row {r}: {e!r}")
 
     return items, errors
+
+
+def _xpath_text(node, expr: str, ns: dict[str, str] | None) -> str | None:
+    res = node.xpath(expr, namespaces=ns)
+    if not res:
+        return None
+    val = res[0]
+    if isinstance(val, etree._Element):
+        return (val.text or "").strip() or None
+    return (str(val).strip() or None)
+
+def _xpath_list(node, expr: str, ns: dict[str, str] | None) -> list[str] | None:
+    res = node.xpath(expr, namespaces=ns) or []
+    out: list[str] = []
+    for v in res:
+        t = ((v.text or "") if isinstance(v, etree._Element) else str(v)).strip()
+        if t:
+            out.append(t)
+    return out or None
+
+def _read_field(node, spec, ns) -> str | None:
+    if not spec:
+        return None
+    if isinstance(spec, str):
+        # скорочення: трактуємо як xpath
+        return _xpath_text(node, spec, ns)
+    by = (spec.get("by") or "").lower()
+    val = spec.get("value")
+    if by in {"xpath", "text"}:
+        return _xpath_text(node, str(val), ns)
+    if by == "attr":
+        if not isinstance(val, str) or not val.startswith("@"):
+            return None
+        attr = val[1:]
+        raw = node.get(attr)
+        return raw.strip() if isinstance(raw, str) else None
+    if by == "xpath_list":
+        # повернемо як JSON-закодований список вище по логіці (список обробимо окремо)
+        return "\u0000LIST\u0000" + "|".join(_xpath_list(node, str(val), ns) or [])
+    return None
+
+def import_xml_bytes(
+    *,
+    file_bytes: bytes,
+    supplier_id: int,
+    price_list_id: int,
+    mapping: dict,
+    source_config: dict | None,
+) -> tuple[list[SupplierProductCreate], list[str]]:
+    """
+    source_config:
+      {
+        "namespaces": {"y":"yml"},
+        "containers": {
+           "items": "/yml_catalog/shop/offers/offer",
+           "categories": "/yml_catalog/shop/categories/category"
+        }
+      }
+    mapping: {
+      "product_fields": {...}, "category_fields": {...}   # новий формат
+      # або плоский dict для сумісності: трактуємо як product_fields
+    }
+    """
+    sc = source_config or {}
+    ns = sc.get("namespaces") or {}
+    cont = (sc.get("containers") or {})
+    items_xpath = cont.get("items")
+    if not items_xpath:
+        return [], ["containers.items is required for XML"]
+
+    root = etree.fromstring(file_bytes)
+
+    # читаємо довідник категорій (опційно)
+    cats: dict[str, dict] = {}
+    cat_xpath = cont.get("categories")
+    cat_fields = (mapping.get("category_fields") if isinstance(mapping, dict) else None) or {}
+    if cat_xpath and cat_fields:
+        for cat in root.xpath(cat_xpath, namespaces=ns) or []:
+            cid = _read_field(cat, cat_fields.get("id"), ns)
+            if not cid:
+                continue
+            cats[cid] = {
+                "name": _read_field(cat, cat_fields.get("name"), ns),
+                "parent_id": _read_field(cat, cat_fields.get("parent_id"), ns),
+            }
+
+    # готуємо перелік товарів
+    product_fields = (mapping.get("product_fields") if isinstance(mapping, dict) else mapping) or {}
+    items_nodes = root.xpath(items_xpath, namespaces=ns) or []
+
+    out: list[SupplierProductCreate] = []
+    errs: list[str] = []
+
+    for n in items_nodes:
+        try:
+            supplier_sku = _read_field(n, product_fields.get("supplier_sku"), ns) or ""
+            if not supplier_sku:
+                continue
+
+            def read(name: str, _n=n) -> str | None:
+                v = _read_field(_n, product_fields.get(name), ns)
+                if isinstance(v, str) and v.startswith("\u0000LIST\u0000"):
+                    return v  # маркер списку
+                return v
+
+            image_field = read("image_urls")
+            images: list[str] | None = None
+            if image_field and image_field.startswith("\u0000LIST\u0000"):
+                images = [x for x in image_field.replace("\u0000LIST\u0000", "", 1).split("|") if x]
+
+            cat_id_ref = read("category_id_ref")
+            category_raw = read("category_raw")
+            if (not category_raw) and cat_id_ref and cat_id_ref in cats:
+                category_raw = cats[cat_id_ref].get("name")
+
+            def fnum(x):  # float parser
+                if not x:
+                    return None
+                x = x.replace(" ", "").replace(",", ".")
+                try:
+                    return float(x)
+                except Exception:
+                    return None
+
+            item = SupplierProductCreate(
+                supplier_id=supplier_id,
+                price_list_id=price_list_id,
+                supplier_sku=supplier_sku,
+                manufacturer_sku=read("manufacturer_sku"),
+                mpn=read("mpn"),
+                gtin=read("gtin"),
+                ean=read("ean"),
+                upc=read("upc"),
+                jan=read("jan"),
+                isbn=read("isbn"),
+                name=read("name"),
+                brand_raw=read("brand_raw"),
+                category_raw=category_raw,
+                price_raw=fnum(read("price_raw")),
+                currency_raw=read("currency_raw"),
+                qty_raw=fnum(read("qty_raw")),
+                availability_text=read("availability_text"),
+                delivery_terms=read("delivery_terms"),
+                delivery_date=read("delivery_date"),
+                location=read("location"),
+                short_description_raw=read("short_description_raw"),
+                description_raw=read("description_raw"),
+                image_urls=images,
+            )
+            out.append(item)
+        except Exception as e:
+            errs.append(f"XML item error: {e!r}")
+
+    return out, errs

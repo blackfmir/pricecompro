@@ -1,5 +1,6 @@
 from app.schemas.common import ORMModel
 
+
 class SupplierBase(ORMModel):
     name: str
     code: str | None = None

@@ -1,13 +1,25 @@
 from __future__ import annotations
+
 from typing import TYPE_CHECKING
+
 from sqlalchemy import (
-    String, ForeignKey, Numeric, UniqueConstraint, Date, DateTime, func, JSON, Boolean
+    JSON,
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Numeric,
+    String,
+    UniqueConstraint,
+    func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.models.base import Base
+
 if TYPE_CHECKING:
-    from .supplier import Supplier
     from .price_list import PriceList
+    from .supplier import Supplier
 
 class SupplierProduct(Base):
     __tablename__ = "supplier_products"
@@ -59,8 +71,17 @@ class SupplierProduct(Base):
     # Технічні
     row_hash: Mapped[str | None] = mapped_column(String(64), index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[object] = mapped_column(DateTime(timezone=False), server_default=func.now())
-    updated_at: Mapped[object] = mapped_column(DateTime(timezone=False), onupdate=func.now())
+    created_at: Mapped[object] = mapped_column(
+        DateTime(timezone=False),
+        server_default=func.now(),
+    )
 
-    supplier: Mapped["Supplier"] = relationship(back_populates="supplier_products")
-    price_list: Mapped["PriceList"] = relationship(back_populates="supplier_products")
+    updated_at: Mapped[object] = mapped_column(
+        DateTime(timezone=False),
+        server_default=func.now(),   # <-- Додаємо дефолт на вставку
+        onupdate=func.now(),
+        nullable=False,              # <-- Явно не допускаємо NULL
+    )
+
+    supplier: Mapped[Supplier] = relationship(back_populates="supplier_products")
+    price_list: Mapped[PriceList] = relationship(back_populates="supplier_products")

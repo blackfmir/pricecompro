@@ -1,17 +1,26 @@
+from __future__ import annotations
+
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
+import app.crud.supplier_product as sp_crud
 from app.crud import price_list as price_list_crud
 from app.crud import supplier as supplier_crud
 from app.db.session import SessionLocal
 from app.schemas.price_list import PriceListCreate, PriceListOut, PriceListUpdate
 from app.schemas.supplier import SupplierCreate, SupplierOut, SupplierUpdate
-from app.services.importer import import_xlsx_bytes  # NEW
+from app.schemas.supplier_product import (
+    SupplierProductCreate,
+    SupplierProductOut,
+    SupplierProductUpdate,
+)
+from app.services.importer import import_xlsx_bytes, import_xml_bytes
 
 router = APIRouter()
 
+# ---- DB session dependency -----------------------------------------------
 def get_db():
     db = SessionLocal()
     try:
@@ -19,17 +28,21 @@ def get_db():
     finally:
         db.close()
 
+
 DBSession = Annotated[Session, Depends(get_db)]
+FileUpload = Annotated[UploadFile, File(...)]
 
 
-# Suppliers
+# ====================== SUPPLIERS =========================================
 @router.post("/suppliers", response_model=SupplierOut)
 def create_supplier(db: DBSession, payload: SupplierCreate):
     return supplier_crud.create(db, payload)
 
+
 @router.get("/suppliers", response_model=list[SupplierOut])
 def list_suppliers(db: DBSession, q: str | None = None):
     return supplier_crud.list_(db, q=q)
+
 
 @router.put("/suppliers/{supplier_id}", response_model=SupplierOut)
 def update_supplier(db: DBSession, supplier_id: int, payload: SupplierUpdate):
@@ -38,6 +51,7 @@ def update_supplier(db: DBSession, supplier_id: int, payload: SupplierUpdate):
         raise HTTPException(status_code=404, detail="Supplier not found")
     return obj
 
+
 @router.delete("/suppliers/{supplier_id}")
 def delete_supplier(db: DBSession, supplier_id: int):
     ok = supplier_crud.delete(db, supplier_id)
@@ -45,14 +59,17 @@ def delete_supplier(db: DBSession, supplier_id: int):
         raise HTTPException(status_code=404, detail="Supplier not found")
     return {"ok": True}
 
-# Price lists
+
+# ====================== PRICE LISTS =======================================
 @router.post("/price-lists", response_model=PriceListOut)
 def create_price_list(db: DBSession, payload: PriceListCreate):
     return price_list_crud.create(db, payload)
 
+
 @router.get("/price-lists", response_model=list[PriceListOut])
 def list_price_lists(db: DBSession, supplier_id: int | None = None):
     return price_list_crud.list_(db, supplier_id=supplier_id)
+
 
 @router.put("/price-lists/{pl_id}", response_model=PriceListOut)
 def update_price_list(db: DBSession, pl_id: int, payload: PriceListUpdate):
@@ -61,6 +78,7 @@ def update_price_list(db: DBSession, pl_id: int, payload: PriceListUpdate):
         raise HTTPException(status_code=404, detail="Price list not found")
     return obj
 
+
 @router.delete("/price-lists/{pl_id}")
 def delete_price_list(db: DBSession, pl_id: int):
     ok = price_list_crud.delete(db, pl_id)
@@ -68,9 +86,35 @@ def delete_price_list(db: DBSession, pl_id: int):
         raise HTTPException(status_code=404, detail="Price list not found")
     return {"ok": True}
 
+
+# ====================== SUPPLIER PRODUCTS =================================
+@router.get("/supplier-products", response_model=dict)
+def list_supplier_products(
+    db: DBSession,
+    supplier_id: int | None = None,
+    q: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+):
+    res = sp_crud.list_(db, supplier_id=supplier_id, q=q, limit=limit, offset=offset)
+    return {
+        "total": res["total"],
+        "items": [SupplierProductOut.model_validate(it) for it in res["items"]],
+    }
+
+
+@router.put("/supplier-products/{sp_id}", response_model=SupplierProductOut)
+def update_supplier_product(db: DBSession, sp_id: int, payload: SupplierProductUpdate):
+    obj = sp_crud.update(db, sp_id, payload)
+    if not obj:
+        raise HTTPException(status_code=404, detail="Supplier product not found")
+    return SupplierProductOut.model_validate(obj)
+
+
+# ====================== IMPORT (CSV / XLSX / XML) =========================
 @router.post("/import/{pl_id}")
-async def import_any(pl_id: int, db: DBSession, file: UploadFile = File(...)):
-    pl: PriceList | None = price_list_crud.get(db, pl_id)
+async def import_any(pl_id: int, db: DBSession, file: FileUpload):
+    pl = price_list_crud.get(db, pl_id)
     if not pl:
         raise HTTPException(status_code=404, detail="Price list not found")
     if not pl.mapping:
@@ -78,6 +122,10 @@ async def import_any(pl_id: int, db: DBSession, file: UploadFile = File(...)):
 
     content = await file.read()
     fmt = (pl.format or "").lower()
+
+    # ✅ ОДНОРАЗОВА ініціалізація для mypy
+    items: list[SupplierProductCreate] = []
+    errors: list[str] = []
 
     if fmt in {"xlsx", "xls"}:
         items, errors = import_xlsx_bytes(
@@ -87,21 +135,15 @@ async def import_any(pl_id: int, db: DBSession, file: UploadFile = File(...)):
             mapping=pl.mapping,
             source_config=pl.source_config,
         )
-        from app.crud import supplier_product as sp_crud
-
-        stats = sp_crud.upsert_many(db, items)
-        return {
-            "price_list_id": pl.id,
-            "format": fmt,
-            "stats": stats,
-            "errors": errors[:10],
-            "preview": [i.model_dump() for i in items[:5]],
-        }
-
+    elif fmt in {"xml", "yml"}:
+        items, errors = import_xml_bytes(
+            file_bytes=content,
+            supplier_id=pl.supplier_id,
+            price_list_id=pl.id,
+            mapping=pl.mapping,
+            source_config=pl.source_config,
+        )
     elif fmt == "csv":
-        # делегуємо на існуючий CSV-імпортер для зворотної сумісності
-        # швидкий re-use: створимо тимчасовий UploadFile-подібний об'єкт не будемо — ми вже в ендпоїнті з файлом.
-        # просто викличемо логіку CSV прямо тут.
         import csv
         import io
         delimiter = (pl.source_config or {}).get("delimiter", ";")
@@ -110,16 +152,10 @@ async def import_any(pl_id: int, db: DBSession, file: UploadFile = File(...)):
 
         def get_by_index(row: list[str], key: str):
             spec = map_.get(key)
-            if not spec:
-                return None
-            if isinstance(spec, str):
-                return None
-            if spec.get("by") != "col_index":
+            if not spec or not isinstance(spec, dict) or spec.get("by") != "col_index":
                 return None
             idx = int(spec.get("value", 0)) - 1
-            if idx < 0 or idx >= len(row):
-                return None
-            return row[idx]
+            return row[idx] if 0 <= idx < len(row) else None
 
         def to_float(s):
             if s is None or s == "":
@@ -127,7 +163,7 @@ async def import_any(pl_id: int, db: DBSession, file: UploadFile = File(...)):
             s = s.replace(" ", "").replace(",", ".")
             try:
                 return float(s)
-            except:
+            except Exception:
                 return None
 
         def split_list(s, key):
@@ -138,55 +174,59 @@ async def import_any(pl_id: int, db: DBSession, file: UploadFile = File(...)):
                 return None
             return [x.strip() for x in s.split(sep) if x.strip()]
 
-        from app.schemas.supplier_product import SupplierProductCreate
-        items = []
-        errors = []
         rownum = 0
         for row in reader:
             rownum += 1
+            supplier_sku = (get_by_index(row, "supplier_sku") or "").strip()
+            if not supplier_sku:
+                continue
             try:
-                supplier_sku = (get_by_index(row, "supplier_sku") or "").strip()
-                if not supplier_sku:
-                    continue
-                items.append(SupplierProductCreate(
-                    supplier_id=pl.supplier_id,
-                    price_list_id=pl.id,
-                    supplier_sku=supplier_sku,
-                    manufacturer_sku=get_by_index(row, "manufacturer_sku"),
-                    mpn=get_by_index(row, "mpn"),
-                    gtin=get_by_index(row, "gtin"),
-                    ean=get_by_index(row, "ean"),
-                    upc=get_by_index(row, "upc"),
-                    jan=get_by_index(row, "jan"),
-                    isbn=get_by_index(row, "isbn"),
-                    name=get_by_index(row, "name"),
-                    brand_raw=get_by_index(row, "brand_raw"),
-                    category_raw=get_by_index(row, "category_raw"),
-                    price_raw=to_float(get_by_index(row, "price_raw")),
-                    currency_raw=(get_by_index(row, "currency_raw") or None),
-                    qty_raw=to_float(get_by_index(row, "qty_raw")),
-                    availability_text=get_by_index(row, "availability_text"),
-                    delivery_terms=get_by_index(row, "delivery_terms"),
-                    delivery_date=get_by_index(row, "delivery_date"),
-                    location=get_by_index(row, "location"),
-                    short_description_raw=get_by_index(row, "short_description_raw"),
-                    description_raw=get_by_index(row, "description_raw"),
-                    image_urls=split_list(get_by_index(row, "image_urls"), "image_urls"),
-                ))
+                items.append(
+                    SupplierProductCreate(
+                        supplier_id=pl.supplier_id,
+                        price_list_id=pl.id,
+                        supplier_sku=supplier_sku,
+                        manufacturer_sku=get_by_index(row, "manufacturer_sku"),
+                        mpn=get_by_index(row, "mpn"),
+                        gtin=get_by_index(row, "gtin"),
+                        ean=get_by_index(row, "ean"),
+                        upc=get_by_index(row, "upc"),
+                        jan=get_by_index(row, "jan"),
+                        isbn=get_by_index(row, "isbn"),
+                        name=get_by_index(row, "name"),
+                        brand_raw=get_by_index(row, "brand_raw"),
+                        category_raw=get_by_index(row, "category_raw"),
+                        price_raw=to_float(get_by_index(row, "price_raw")),
+                        currency_raw=(get_by_index(row, "currency_raw") or None),
+                        qty_raw=to_float(get_by_index(row, "qty_raw")),
+                        availability_text=get_by_index(row, "availability_text"),
+                        delivery_terms=get_by_index(row, "delivery_terms"),
+                        delivery_date=get_by_index(row, "delivery_date"),
+                        location=get_by_index(row, "location"),
+                        short_description_raw=get_by_index(row, "short_description_raw"),
+                        description_raw=get_by_index(row, "description_raw"),
+                        image_urls=split_list(get_by_index(row, "image_urls"), "image_urls"),
+                    )
+                )
             except Exception as e:
                 errors.append(f"Row {rownum}: {e!r}")
-
-        from app.crud import supplier_product as sp_crud
-        stats = sp_crud.upsert_many(db, items)
-        return {
-            "price_list_id": pl.id,
-            "format": fmt,
-            "stats": stats,
-            "errors": errors[:10],
-            "preview": [i.model_dump() for i in items[:5]],
-        }
-
     else:
         raise HTTPException(status_code=501, detail=f"Import for format '{fmt}' not implemented yet")
+
+    stats = sp_crud.upsert_many(db, items)
+    return {
+        "price_list_id": pl.id,
+        "format": fmt,
+        "stats": stats,
+        "errors": errors[:10],
+        "preview": [i.model_dump() for i in items[:5]],
+    }
+
+
+
+# (залишаємо короткий сумісний шлях для CSV)
+@router.post("/import/{pl_id}/csv")
+async def import_csv(pl_id: int, db: DBSession, file: FileUpload):
+    return await import_any(pl_id, db, file)
 
 

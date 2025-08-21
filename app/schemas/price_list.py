@@ -1,13 +1,15 @@
+from typing import Any
+
 from app.schemas.common import ORMModel
-from typing import Any, Dict
+
 
 class PriceListBase(ORMModel):
     supplier_id: int
     name: str
     source_type: str = "local"
-    source_config: Dict[str, Any] | None = None
+    source_config: dict[str, Any] | None = None
     format: str | None = "csv"
-    mapping: Dict[str, Any] | None = None
+    mapping: dict[str, Any] | None = None
     schedule: str | None = None
     active: bool = True
 
@@ -17,9 +19,9 @@ class PriceListCreate(PriceListBase):
 class PriceListUpdate(ORMModel):
     name: str | None = None
     source_type: str | None = None
-    source_config: Dict[str, Any] | None = None
+    source_config: dict[str, Any] | None = None
     format: str | None = None
-    mapping: Dict[str, Any] | None = None
+    mapping: dict[str, Any] | None = None
     schedule: str | None = None
     active: bool | None = None
 

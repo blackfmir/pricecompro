@@ -1,6 +1,8 @@
 from sqlalchemy.orm import Session
+
 from app.models.price_list import PriceList
 from app.schemas.price_list import PriceListCreate, PriceListUpdate
+
 
 def create(db: Session, data: PriceListCreate) -> PriceList:
     obj = PriceList(**data.model_dump())

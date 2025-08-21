@@ -1,6 +1,8 @@
 from sqlalchemy.orm import Session
+
 from app.models.supplier import Supplier
 from app.schemas.supplier import SupplierCreate, SupplierUpdate
+
 
 def create(db: Session, data: SupplierCreate) -> Supplier:
     obj = Supplier(name=data.name, code=data.code, active=data.active)

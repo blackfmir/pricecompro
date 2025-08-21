@@ -1,18 +1,10 @@
-from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
+
 from alembic import context
-import os
-import sys
-
-# додаємо шлях до app
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
-from app.models.base import Base  # наш metadata
-# Імпортуємо моделі для реєстрації таблиць у metadata (side-effect)
-from app.models import supplier, price_list, supplier_product  # noqa: F401
+from app.core.config import settings
+from app.models import category, manufacturer, price_list, supplier, supplier_product  # noqa: F401
+from app.models.base import Base
 
 config = context.config
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
-
+config.set_main_option("sqlalchemy.url", settings.database_url)
 target_metadata = Base.metadata
