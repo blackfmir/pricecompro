@@ -1,7 +1,7 @@
 # app/web/views.py
 from __future__ import annotations
 
-from typing import Annotated, Any, cast
+from typing import Annotated, Any, TypeAlias, cast
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import RedirectResponse
@@ -35,7 +35,7 @@ def get_db():
 
 
 DBSession = Annotated[Session, Depends(get_db)]
-UploadFileForm = Annotated[UploadFile, File(...)]
+UploadFileForm: TypeAlias = Annotated[UploadFile, File(...)]
 
 
 # -------- Dashboard
@@ -393,11 +393,6 @@ def ui_price_list_delete(request: Request, db: DBSession, pl_id: int):
         return RedirectResponse(url="/ui/price-lists?err=not_found", status_code=303)
     return RedirectResponse(url="/ui/price-lists?msg=deleted", status_code=303)
 
-# Допоміжний тип
-FileUpload = Annotated[UploadFile, File(...)]
-
-UploadFileForm = Annotated[UploadFile, File(...)]
-
 @router.post("/ui/price-lists/{pl_id}/upload-source")
 async def ui_upload_source(request: Request, db: DBSession, pl_id: int, file: UploadFileForm):
     pl = price_list_crud.get(db, pl_id)
@@ -425,8 +420,6 @@ async def ui_upload_source(request: Request, db: DBSession, pl_id: int, file: Up
     return RedirectResponse(url=f"/ui/price-lists/{pl_id}/edit?msg=uploaded", status_code=303)
 
 
-
-
 # -------- Import form + upload
 @router.get("/ui/price-lists/{pl_id}/import")
 def ui_import_form(request: Request, db: DBSession, pl_id: int):
@@ -435,7 +428,8 @@ def ui_import_form(request: Request, db: DBSession, pl_id: int):
 
 
 @router.post("/ui/price-lists/{pl_id}/import")
-async def ui_import_upload(request: Request, db: DBSession, pl_id: int, file: FileUpload):
+async def ui_import_upload(request: Request, db: DBSession, pl_id: int, file: UploadFileForm):
+
     pl = price_list_crud.get(db, pl_id)
     if not pl:
         raise HTTPException(status_code=404, detail="Price list not found")

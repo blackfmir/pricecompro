@@ -18,11 +18,11 @@ def sanitize_filename(name: str) -> str:
     return name or "file.bin"
 
 def _make_url(path: Path) -> str:
-    rel = path.relative_to(settings.STORAGE_DIR)
+    rel = path.relative_to(settings.storage_dir)
     return f"/storage/{rel.as_posix()}"
 
 def save_price_upload(pl_id: int, filename: str, content: bytes) -> tuple[Path, str]:
-    root = Path(settings.STORAGE_DIR) / "pricelists" / str(pl_id) / "uploads"
+    root = Path(settings.storage_dir) / "pricelists" / str(pl_id) / "uploads"
     _ensure_dir(root)
     safe = sanitize_filename(filename or "source.bin")
     ts = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -31,7 +31,7 @@ def save_price_upload(pl_id: int, filename: str, content: bytes) -> tuple[Path, 
     return path, _make_url(path)
 
 def save_price_download(pl_id: int, filename: str, content: bytes) -> tuple[Path, str]:
-    root = Path(settings.STORAGE_DIR) / "pricelists" / str(pl_id) / "downloads"
+    root = Path(settings.storage_dir) / "pricelists" / str(pl_id) / "downloads"
     _ensure_dir(root)
     safe = sanitize_filename(filename or "source.bin")
     ts = datetime.now().strftime("%Y%m%d-%H%M%S")

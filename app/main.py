@@ -5,7 +5,6 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from starlette.staticfiles import StaticFiles
 
 from app.api.routes import router as api_router
 from app.core.config import settings
@@ -13,7 +12,6 @@ from app.core.config import settings
 # DEV: імпорт БД і моделей до create_all
 from app.db.session import engine
 from app.models import (  # noqa: F401
-    # якщо додав моделі мапінгів:
     brand_map,
     category,
     category_map,
@@ -34,9 +32,12 @@ Base.metadata.create_all(bind=engine)
 app.include_router(api_router, prefix="/api")
 app.include_router(ui_router)
 
-# Статика тільки якщо каталог існує
+# /static — тільки якщо каталог існує
 static_dir = Path(__file__).parent / "static"
 if static_dir.is_dir():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
-    app.mount("/storage", StaticFiles(directory=settings.STORAGE_DIR), name="storage")
 
+# /storage — завжди; створюємо каталог і монтуємо
+storage_dir = Path(settings.storage_dir)
+storage_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/storage", StaticFiles(directory=str(storage_dir)), name="storage")
