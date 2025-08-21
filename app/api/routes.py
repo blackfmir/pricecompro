@@ -5,10 +5,23 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
+import app.crud.brand_map as brand_map_crud
+import app.crud.category_map as category_map_crud
+
+# CRUD
 import app.crud.supplier_product as sp_crud
 from app.crud import price_list as price_list_crud
 from app.crud import supplier as supplier_crud
 from app.db.session import SessionLocal
+
+# Schemas
+from app.schemas.normalize import (
+    BrandMapCreate,
+    BrandMapOut,
+    CategoryMapCreate,
+    CategoryMapOut,
+    SuggestionOut,
+)
 from app.schemas.price_list import PriceListCreate, PriceListOut, PriceListUpdate
 from app.schemas.supplier import SupplierCreate, SupplierOut, SupplierUpdate
 from app.schemas.supplier_product import (
@@ -16,9 +29,12 @@ from app.schemas.supplier_product import (
     SupplierProductOut,
     SupplierProductUpdate,
 )
+
+# Services
 from app.services.importer import import_xlsx_bytes, import_xml_bytes
 
 router = APIRouter()
+
 
 # ---- DB session dependency -----------------------------------------------
 def get_db():
@@ -123,7 +139,6 @@ async def import_any(pl_id: int, db: DBSession, file: FileUpload):
     content = await file.read()
     fmt = (pl.format or "").lower()
 
-    # ✅ ОДНОРАЗОВА ініціалізація для mypy
     items: list[SupplierProductCreate] = []
     errors: list[str] = []
 
@@ -146,9 +161,10 @@ async def import_any(pl_id: int, db: DBSession, file: FileUpload):
     elif fmt == "csv":
         import csv
         import io
+
         delimiter = (pl.source_config or {}).get("delimiter", ";")
         reader = csv.reader(io.StringIO(content.decode("utf-8-sig", errors="replace")), delimiter=delimiter)
-        map_ = pl.mapping
+        map_ = pl.mapping or {}
 
         def get_by_index(row: list[str], key: str):
             spec = map_.get(key)
@@ -214,6 +230,11 @@ async def import_any(pl_id: int, db: DBSession, file: FileUpload):
         raise HTTPException(status_code=501, detail=f"Import for format '{fmt}' not implemented yet")
 
     stats = sp_crud.upsert_many(db, items)
+
+    # NEW: автонормалізація відразу після імпорту
+    brand_map_crud.apply_to_products(db, pl.supplier_id)
+    category_map_crud.apply_to_products(db, pl.supplier_id)
+
     return {
         "price_list_id": pl.id,
         "format": fmt,
@@ -223,10 +244,39 @@ async def import_any(pl_id: int, db: DBSession, file: FileUpload):
     }
 
 
-
 # (залишаємо короткий сумісний шлях для CSV)
 @router.post("/import/{pl_id}/csv")
 async def import_csv(pl_id: int, db: DBSession, file: FileUpload):
     return await import_any(pl_id, db, file)
 
 
+# ====================== NORMALIZATION =====================================
+@router.get("/normalize/brand-suggestions", response_model=list[SuggestionOut])
+def brand_suggestions(db: DBSession, supplier_id: int, limit: int = 100):
+    return brand_map_crud.suggestions(db, supplier_id, limit)
+
+
+@router.get("/normalize/category-suggestions", response_model=list[SuggestionOut])
+def category_suggestions(db: DBSession, supplier_id: int, limit: int = 100):
+    return category_map_crud.suggestions(db, supplier_id, limit)
+
+
+@router.post("/brand-maps", response_model=BrandMapOut)
+def create_brand_map(db: DBSession, payload: BrandMapCreate):
+    return brand_map_crud.create(db, payload.supplier_id, payload.raw_name, payload.manufacturer_id)
+
+
+@router.post("/category-maps", response_model=CategoryMapOut)
+def create_category_map(db: DBSession, payload: CategoryMapCreate):
+    return category_map_crud.create(db, payload.supplier_id, payload.raw_name, payload.category_id)
+
+
+@router.post("/normalize/apply")
+def apply_maps(db: DBSession, supplier_id: int):
+    updated_brands = brand_map_crud.apply_to_products(db, supplier_id)
+    updated_categories = category_map_crud.apply_to_products(db, supplier_id)
+    return {
+        "supplier_id": supplier_id,
+        "updated_brands": updated_brands,
+        "updated_categories": updated_categories,
+    }
