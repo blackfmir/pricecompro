@@ -1,0 +1,26 @@
+{% extends "base.html" %}{% block content %}
+<h1 class="text-xl font-semibold mb-3">Price lists</h1>
+<form method="post" class="bg-white p-3 rounded-xl shadow mb-4 grid grid-cols-4 gap-2">
+  <select name="supplier_id" class="border px-3 py-2 rounded" required>
+    <option value="">-- supplier --</option>
+    {% for s in suppliers %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}
+  </select>
+  <input name="name" placeholder="Name" class="border px-3 py-2 rounded" required>
+  <select name="format" class="border px-3 py-2 rounded"><option>xml</option><option>xlsx</option><option>csv</option></select>
+  <button class="px-4 py-2 bg-blue-600 text-white rounded">Add</button>
+</form>
+<table class="w-full bg-white rounded-xl shadow overflow-hidden">
+  <thead class="bg-slate-100"><tr><th class="p-2 text-left">ID</th><th class="p-2 text-left">Name</th><th class="p-2 text-left">Supplier</th><th class="p-2 text-left">Format</th><th class="p-2 text-left">Actions</th></tr></thead>
+  <tbody>
+    {% for pl in items %}
+    <tr class="border-t">
+      <td class="p-2">{{ pl.id }}</td>
+      <td class="p-2">{{ pl.name }}</td>
+      <td class="p-2">{{ pl.supplier_id }}</td>
+      <td class="p-2">{{ pl.format }}</td>
+      <td class="p-2"><a class="text-blue-600" href="/ui/price-lists/{{ pl.id }}/import">Import</a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,13 @@
+{% extends "base.html" %}{% block content %}
+<h1 class="text-xl font-semibold mb-3">Suppliers</h1>
+<form method="post" class="bg-white p-3 rounded-xl shadow mb-4 flex gap-2">
+  <input name="name" placeholder="Name" class="border px-3 py-2 rounded w-48" required>
+  <input name="code" placeholder="Code" class="border px-3 py-2 rounded w-32" required>
+  <label class="inline-flex items-center gap-2"><input type="checkbox" name="active" checked> Active</label>
+  <button class="px-4 py-2 bg-blue-600 text-white rounded">Add</button>
+</form>
+<table class="w-full bg-white rounded-xl shadow overflow-hidden">
+  <thead class="bg-slate-100"><tr><th class="text-left p-2">ID</th><th class="text-left p-2">Name</th><th class="text-left p-2">Code</th><th class="text-left p-2">Active</th></tr></thead>
+  <tbody>{% for s in items %}<tr class="border-t"><td class="p-2">{{ s.id }}</td><td class="p-2">{{ s.name }}</td><td class="p-2">{{ s.code }}</td><td class="p-2">{{ "Yes" if s.active else "No" }}</td></tr>{% endfor %}</tbody>
+</table>
+{% endblock %}
