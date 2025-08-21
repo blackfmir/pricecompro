@@ -70,9 +70,11 @@ def update_supplier(db: DBSession, supplier_id: int, payload: SupplierUpdate):
 
 @router.delete("/suppliers/{supplier_id}")
 def delete_supplier(db: DBSession, supplier_id: int):
-    ok = supplier_crud.delete(db, supplier_id)
+    ok, reason = supplier_crud.delete(db, supplier_id)
     if not ok:
-        raise HTTPException(status_code=404, detail="Supplier not found")
+        if reason == "not_found":
+            raise HTTPException(status_code=404, detail="Supplier not found")
+        raise HTTPException(status_code=409, detail="Cannot delete supplier with existing price lists")
     return {"ok": True}
 
 
@@ -260,16 +262,42 @@ def brand_suggestions(db: DBSession, supplier_id: int, limit: int = 100):
 def category_suggestions(db: DBSession, supplier_id: int, limit: int = 100):
     return category_map_crud.suggestions(db, supplier_id, limit)
 
+@router.post("/category-maps", response_model=CategoryMapOut)
+def create_category_map(db: DBSession, payload: CategoryMapCreate):
+    return category_map_crud.create(db, payload.supplier_id, payload.raw_name, payload.category_id)
+
+
+@router.put("/category-maps/{cm_id}", response_model=CategoryMapOut)
+def update_category_map(db: DBSession, cm_id: int, category_id: int):
+    obj = category_map_crud.update(db, cm_id, category_id)
+    if not obj:
+        raise HTTPException(404, "Category map not found")
+    return obj
+
+@router.delete("/category-maps/{cm_id}")
+def delete_category_map(db: DBSession, cm_id: int):
+    ok = category_map_crud.delete(db, cm_id)
+    if not ok:
+        raise HTTPException(404, "Category map not found")
+    return {"ok": True}
 
 @router.post("/brand-maps", response_model=BrandMapOut)
 def create_brand_map(db: DBSession, payload: BrandMapCreate):
     return brand_map_crud.create(db, payload.supplier_id, payload.raw_name, payload.manufacturer_id)
 
+@router.put("/brand-maps/{bm_id}", response_model=BrandMapOut)
+def update_brand_map(db: DBSession, bm_id: int, manufacturer_id: int):
+    obj = brand_map_crud.update(db, bm_id, manufacturer_id)
+    if not obj:
+        raise HTTPException(404, "Brand map not found")
+    return obj
 
-@router.post("/category-maps", response_model=CategoryMapOut)
-def create_category_map(db: DBSession, payload: CategoryMapCreate):
-    return category_map_crud.create(db, payload.supplier_id, payload.raw_name, payload.category_id)
-
+@router.delete("/brand-maps/{bm_id}")
+def delete_brand_map(db: DBSession, bm_id: int):
+    ok = brand_map_crud.delete(db, bm_id)
+    if not ok:
+        raise HTTPException(404, "Brand map not found")
+    return {"ok": True}
 
 @router.post("/normalize/apply")
 def apply_maps(db: DBSession, supplier_id: int):

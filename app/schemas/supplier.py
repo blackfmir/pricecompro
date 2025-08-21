@@ -1,7 +1,9 @@
-from app.schemas.common import ORMModel
+from __future__ import annotations
+
+from pydantic import BaseModel, ConfigDict
 
 
-class SupplierBase(ORMModel):
+class SupplierBase(BaseModel):
     name: str
     code: str | None = None
     active: bool = True
@@ -9,10 +11,11 @@ class SupplierBase(ORMModel):
 class SupplierCreate(SupplierBase):
     pass
 
-class SupplierUpdate(ORMModel):
+class SupplierUpdate(BaseModel):
     name: str | None = None
     code: str | None = None
     active: bool | None = None
 
 class SupplierOut(SupplierBase):
     id: int
+    model_config = ConfigDict(from_attributes=True)

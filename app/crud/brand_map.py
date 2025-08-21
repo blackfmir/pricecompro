@@ -27,6 +27,16 @@ def delete(db: Session, bm_id: int) -> bool:
     db.commit()
     return True
 
+def update(db: Session, bm_id: int, manufacturer_id: int) -> BrandMap | None:
+    obj = db.get(BrandMap, bm_id)
+    if not obj:
+        return None
+    obj.manufacturer_id = manufacturer_id
+    db.commit()
+    db.refresh(obj)
+    return obj
+
+
 def suggestions(db: Session, supplier_id: int, limit: int = 100) -> list[dict[str, Any]]:
     rows = (
         db.query(SupplierProduct.brand_raw, func.count().label("ct"))

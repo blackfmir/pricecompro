@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="text-xl font-semibold mb-3">Edit price list #{{ pl.id }}</h1>
+
+{% if request.query_params.get('msg') %}
+  <div class="mb-3 bg-green-50 border border-green-200 text-green-800 px-3 py-2 rounded">{{ request.query_params.get('msg') }}</div>
+{% endif %}
+
+<form method="post" class="bg-white p-4 rounded-xl shadow grid gap-4" id="pl-form">
+  <!-- Basic -->
+  <div class="grid gap-2">
+    <label class="grid gap-1">
+      <span class="text-sm text-slate-600">Name</span>
+      <input name="name" class="border px-3 py-2 rounded" value="{{ pl.name }}" required>
+    </label>
+
+    <div class="grid grid-cols-3 gap-3">
+      <label class="grid gap-1">
+        <span class="text-sm text-slate-600">Source type</span>
+        <select name="source_type" id="source_type" class="border px-3 py-2 rounded" onchange="toggleBlocks()" >
+          <option value="local"  {% if source_type=='local' %}selected{% endif %}>local</option>
+          <option value="http"   {% if source_type=='http' %}selected{% endif %}>http</option>
+          <option value="ftp"    {% if source_type=='ftp' %}selected{% endif %}>ftp</option>
+          <option value="parser" {% if source_type=='parser' %}selected{% endif %}>parser</option>
+        </select>
+      </label>
+
+      <label class="grid gap-1 col-span-2">
+        <span class="text-sm text-slate-600">Format</span>
+        <select name="format" id="format" class="border px-3 py-2 rounded" onchange="toggleBlocks()">
+          <option value="xml"  {% if format=='xml' %}selected{% endif %}>XML / YML</option>
+          <option value="xlsx" {% if format=='xlsx' %}selected{% endif %}>XLSX</option>
+          <option value="xls"  {% if format=='xls' %}selected{% endif %}>XLS</option>
+          <option value="csv"  {% if format=='csv' %}selected{% endif %}>CSV</option>
+        </select>
+      </label>
+    </div>
+  </div>
+
+  <!-- Source-specific blocks -->
+  <div id="block_local" class="grid gap-2 hidden">
+    <h2 class="text-lg font-semibold">Local source</h2>
+    <label class="grid gap-1">
+      <span class="text-sm text-slate-600">Current path</span>
+      <input name="local_path" class="border px-3 py-2 rounded" value="{{ local_path }}" placeholder="D:\path\file.xlsx">
+    </label>
+    <form method="post" action="/ui/price-lists/{{ pl.id }}/upload-source" enctype="multipart/form-data" class="grid gap-2">
+      <span class="text-sm text-slate-600">Upload new source file</span>
+      <input type="file" name="file" class="border px-3 py-2 rounded" />
+      <button class="px-4 py-2 bg-slate-700 text-white rounded w-max mt-1">Upload</button>
+    </form>
+  </div>
+
+  <div id="block_http" class="grid gap-2 hidden">
+    <h2 class="text-lg font-semibold">HTTP source</h2>
+    <label class="grid gap-1">
+      <span class="text-sm text-slate-600">URL / Link</span>
+      <input name="link" class="border px-3 py-2 rounded" value="{{ url_link }}" placeholder="https://example.com/price.xml">
+    </label>
+    {% if downloaded_path %}
+    <div class="text-sm text-slate-600">Downloaded file: <code>{{ downloaded_path }}</code></div>
+    {% endif %}
+  </div>
+
+  <div id="block_ftp" class="grid gap-2 hidden">
+    <h2 class="text-lg font-semibold">FTP source</h2>
+    <div class="grid grid-cols-2 gap-3">
+      <label class="grid gap-1">
+        <span class="text-sm text-slate-600">Host</span>
+        <input name="ftp_host" class="border px-3 py-2 rounded" value="{{ ftp_cfg.get('host','') }}">
+      </label>
+      <label class="grid gap-1">
+        <span class="text-sm text-slate-600">Port</span>
+        <input name="ftp_port" type="number" class="border px-3 py-2 rounded" value="{{ ftp_cfg.get('port',21) }}">
+      </label>
+      <label class="grid gap-1">
+        <span class="text-sm text-slate-600">User</span>
+        <input name="ftp_user" class="border px-3 py-2 rounded" value="{{ ftp_cfg.get('user','') }}">
+      </label>
+      <label class="grid gap-1">
+        <span class="text-sm text-slate-600">Password</span>
+        <input name="ftp_pass" type="password" class="border px-3 py-2 rounded" value="{{ ftp_cfg.get('password','') }}">
+      </label>
+      <label class="grid gap-1 col-span-2">
+        <span class="text-sm text-slate-600">Remote path</span>
+        <input name="ftp_remote" class="border px-3 py-2 rounded" value="{{ ftp_cfg.get('remote_path','') }}" placeholder="/folder/price.csv">
+      </label>
+    </div>
+    <div class="text-sm text-slate-500">Завантаження з FTP — у наступних версіях; зараз лише збереження налаштувань.</div>
+  </div>
+
+  <div id="block_parser" class="grid gap-2 hidden">
+    <h2 class="text-lg font-semibold">Custom parser</h2>
+    <div class="text-sm text-slate-500">Планується доповнити в наступній версії.</div>
+  </div>
+
+  <!-- Format-specific block (full width) -->
+  <div class="grid gap-2">
+    <h2 class="text-lg font-semibold">Format settings</h2>
+
+    <div id="fmt_xlsx" class="grid grid-cols-2 gap-3 hidden">
+      <label class="grid gap-1">
+        <span class="text-sm text-slate-600">Sheet selector</span>
+        <select name="xlsx_sheet_by" class="border px-3 py-2 rounded">
+          <option value="name"  {% if xlsx_sheet_by=='name' %}selected{% endif %}>by name</option>
+          <option value="index" {% if xlsx_sheet_by=='index' %}selected{% endif %}>by index (1-based)</option>
+        </select>
+      </label>
+      <label class="grid gap-1">
+        <span class="text-sm text-slate-600">Sheet value</span>
+        <input name="xlsx_sheet_value" class="border px-3 py-2 rounded" value="{{ xlsx_sheet_value }}" placeholder="Sheet1 або 1">
+      </label>
+    </div>
+
+    <div id="fmt_csv" class="grid grid-cols-2 gap-3 hidden">
+      <label class="grid gap-1">
+        <span class="text-sm text-slate-600">Encoding</span>
+        <input name="csv_encoding" class="border px-3 py-2 rounded" value="{{ csv_encoding }}" placeholder="utf-8">
+      </label>
+      <label class="grid gap-1">
+        <span class="text-sm text-slate-600">Delimiter</span>
+        <input name="csv_delimiter" class="border px-3 py-2 rounded" value="{{ csv_delimiter }}" placeholder="; , \t">
+      </label>
+    </div>
+
+    <div id="fmt_xml" class="grid grid-cols-2 gap-3 hidden">
+      <label class="grid gap-1 col-span-2">
+        <span class="text-sm text-slate-600">Items container</span>
+        <input name="xml_items_container" class="border px-3 py-2 rounded" value="{{ xml_items_container }}" placeholder="/yml_catalog/shop/offers/offer">
+      </label>
+      <label class="inline-flex items-center gap-2">
+        <input type="checkbox" name="xml_use_xpath" {% if xml_use_xpath %}checked{% endif %}>
+        <span class="text-sm text-slate-600">Use XPath for selectors</span>
+      </label>
+    </div>
+  </div>
+
+  <!-- Mapping block -->
+  <div class="grid gap-2">
+    <h2 class="text-lg font-semibold">Mapping</h2>
+
+    {% set pairs = [
+      ('supplier_sku', 'Supplier SKU'),
+      ('name', 'Name'),
+      ('price_raw', 'Price'),
+      ('currency_raw', 'Currency'),
+      ('qty_raw', 'Quantity'),
+      ('category_raw', 'Category'),
+      ('image_urls', 'Image URLs'),
+    ] %}
+
+    <div class="grid gap-2">
+      {% for key, label in pairs %}
+      <div class="grid grid-cols-3 gap-3 items-end">
+        <div class="grid gap-1">
+          <span class="text-sm text-slate-600">{{ label }}</span>
+          <input name="map_{{ key }}_value" class="border px-3 py-2 rounded"
+                 value="{{ mapping_ui[key]['value'] if mapping_ui.get(key) else '' }}"
+                 placeholder="{% if format in ['xlsx','xls'] %}A / 1{% elif format=='csv' %}1 / 2 / 3{% else %}.//tag/text() or XPath{% endif %}">
+        </div>
+        <div class="grid gap-1">
+          <span class="text-sm text-slate-600">Mode</span>
+          <select name="map_{{ key }}_mode" class="border px-3 py-2 rounded">
+            {% if format in ['xlsx','xls'] %}
+              <option value="col_letter" {% if mapping_ui[key]['mode']=='col_letter' %}selected{% endif %}>Column letter</option>
+              <option value="col_index"  {% if mapping_ui[key]['mode']=='col_index' %}selected{% endif %}>Column index</option>
+            {% elif format=='csv' %}
+              <option value="col_index" selected>Column index</option>
+            {% else %}
+              <option value="xpath" {% if mapping_ui[key]['mode']=='xpath' %}selected{% endif %}>XPath</option>
+              <option value="tag"   {% if mapping_ui[key]['mode']=='tag' %}selected{% endif %}>Tag name</option>
+            {% endif %}
+          </select>
+        </div>
+        {% if key=='image_urls' and format in ['xlsx','xls','csv'] %}
+        <div class="grid gap-1">
+          <span class="text-sm text-slate-600">Split (optional)</span>
+          <input name="map_image_urls_split" class="border px-3 py-2 rounded" value="{{ image_urls_split or '' }}" placeholder="| , ;">
+        </div>
+        {% else %}
+        <div></div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="flex gap-2">
+    <a class="px-4 py-2 bg-slate-600 text-white rounded" href="/ui/price-lists">Back</a>
+    <button class="px-4 py-2 bg-blue-600 text-white rounded">Save</button>
+  </div>
+</form>
+
+<script>
+function toggleBlocks() {
+  const st = document.getElementById('source_type').value;
+  const fmt = document.getElementById('format').value;
+
+  ['block_local','block_http','block_ftp','block_parser'].forEach(id=>{
+    document.getElementById(id).classList.add('hidden');
+  });
+  if (st === 'local')  document.getElementById('block_local').classList.remove('hidden');
+  if (st === 'http')   document.getElementById('block_http').classList.remove('hidden');
+  if (st === 'ftp')    document.getElementById('block_ftp').classList.remove('hidden');
+  if (st === 'parser') document.getElementById('block_parser').classList.remove('hidden');
+
+  document.getElementById('fmt_xlsx').classList.add('hidden');
+  document.getElementById('fmt_csv').classList.add('hidden');
+  document.getElementById('fmt_xml').classList.add('hidden');
+  if (fmt === 'xlsx' || fmt === 'xls') document.getElementById('fmt_xlsx').classList.remove('hidden');
+  if (fmt === 'csv') document.getElementById('fmt_csv').classList.remove('hidden');
+  if (fmt === 'xml') document.getElementById('fmt_xml').classList.remove('hidden');
+}
+toggleBlocks();
+</script>
+{% endblock %}
