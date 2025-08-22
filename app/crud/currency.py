@@ -13,7 +13,7 @@ def list_(db: Session, q: str | None = None) -> list[Currency]:
     if q:
         like = f"%{q}%"
         stmt = stmt.where((Currency.name.ilike(like)) | (Currency.iso_code.ilike(like)))
-    return db.scalars(stmt).all()
+    return list(db.scalars(stmt).all())
 
 def get(db: Session, currency_id: int) -> Currency | None:
     return db.get(Currency, currency_id)

@@ -379,7 +379,6 @@ async def ui_price_list_update(request: Request, db: DBSession, pl_id: int):
         if spec:
             product_fields[key] = spec
 
-    new_mapping = {"product_fields": product_fields} if product_fields else (pl.mapping or {})
 
     try:
         default_currency_id = int(str(form.get("default_currency_id"))) if form.get("default_currency_id") else None
@@ -388,13 +387,14 @@ async def ui_price_list_update(request: Request, db: DBSession, pl_id: int):
 
     payload = PriceListUpdate(
         name=name,
-        format=format,
-        source_type=source_type,
+        format=fmt,           # було: format
+        source_type=s_type,   # було: source_type
         source_config=src,
         mapping=pl.mapping,
         active=pl.active,
         default_currency_id=default_currency_id,
     )
+
     obj = price_list_crud.update(db, pl_id, payload)
     if not obj:
         raise HTTPException(404, "Price list not found")

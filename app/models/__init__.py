@@ -1,10 +1,10 @@
-from .supplier import Supplier  # noqa
-from .price_list import PriceList  # noqa
-from .supplier_product import SupplierProduct  # noqa
-from .manufacturer import Manufacturer  # noqa
-from .category import Category  # noqa
-from .brand_map import BrandMap  # noqa: F401
-from .category_map import CategoryMap  # noqa: F401
-from . import currency  # noqa: F401
-
-
+from . import (
+    brand_map,  # noqa: F401
+    category,  # noqa: F401
+    category_map,  # noqa: F401
+    currency,  # noqa: F401
+    manufacturer,  # noqa: F401
+    price_list,  # noqa: F401
+    supplier,  # noqa: F401
+    supplier_product,  # noqa: F401
+)
