@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 import app.crud.brand_map as brand_map_crud
@@ -72,12 +73,18 @@ def update_supplier(db: DBSession, supplier_id: int, payload: SupplierUpdate):
 
 @router.delete("/suppliers/{supplier_id}")
 def delete_supplier(db: DBSession, supplier_id: int):
-    ok, reason = supplier_crud.delete(db, supplier_id)
-    if not ok:
-        if reason == "not_found":
-            raise HTTPException(status_code=404, detail="Supplier not found")
-        raise HTTPException(status_code=409, detail="Cannot delete supplier with existing price lists")
-    return {"ok": True}
+    # якщо маєш delete_safe, що повертає (ok, reason), краще так:
+    try:
+        ok, reason = supplier_crud.delete_safe(db, supplier_id)  # type: ignore[attr-defined]
+    except AttributeError:
+        # fallback: звичайне видалення, яке повертає bool
+        ok = supplier_crud.delete(db, supplier_id)
+        reason = None
+
+    if ok:
+        return {"ok": True}
+    return JSONResponse({"ok": False, "reason": reason or "cannot delete"}, status_code=400)
+
 
 
 # ====================== PRICE LISTS =======================================
@@ -328,11 +335,18 @@ def update_currency(db: DBSession, currency_id: int, payload: CurrencyUpdate):
     return obj
 
 @router.delete("/currencies/{currency_id}")
-def delete_currency(db: DBSession, currency_id: int):
-    ok, err = currency_crud.delete(db, currency_id)
+def api_currency_delete(currency_id: int, db: DBSession):
+    ok, err = currency_crud.delete_safe(db, currency_id)
     if not ok:
-        raise HTTPException(status_code=400, detail=err or "Delete failed")
+        raise HTTPException(status_code=400, detail=err or "Cannot delete currency")
     return {"ok": True}
+
+@router.put("/currencies/{currency_id}")
+def api_currency_update(currency_id: int, payload: CurrencyUpdate, db: DBSession):
+    obj = currency_crud.update_(db, currency_id, payload)
+    if not obj:
+        raise HTTPException(status_code=404, detail="Currency not found")
+    return obj
 
 @router.post("/currencies/{currency_id}/set-primary", response_model=CurrencyOut)
 def set_primary_currency(db: DBSession, currency_id: int):

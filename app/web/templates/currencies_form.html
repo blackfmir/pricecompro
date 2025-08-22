@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ "Нова валюта" if mode == "create" else ("Редагувати валюту #" ~ item.id) }}</h1>
+
+{% if error %}
+  <p style="color:#a00;">{{ error }}</p>
+{% endif %}
+
+<form method="post" action="{{ '/ui/currencies' if mode == 'create' else ('/ui/currencies/' ~ item.id ~ '/edit') }}">
+  <div>
+    <label>Назва *<br>
+      <input type="text" name="name" value="{{ (item.name if item else '') | e }}" required>
+    </label>
+  </div>
+
+  <div>
+    <label>ISO код *<br>
+      <input type="text" name="iso_code" value="{{ (item.iso_code if item else '') | e }}" required>
+    </label>
+  </div>
+
+  <div>
+    <label>Символ ліворуч<br>
+      <input type="text" name="symbol_left" value="{{ (item.symbol_left if item else '') | e }}">
+    </label>
+  </div>
+
+  <div>
+    <label>Символ праворуч<br>
+      <input type="text" name="symbol_right" value="{{ (item.symbol_right if item else '') | e }}">
+    </label>
+  </div>
+
+  <div>
+    <label>Кількість знаків після коми<br>
+      <input type="number" name="decimals" min="0" max="8" step="1" value="{{ item.decimals if item else 2 }}">
+    </label>
+  </div>
+
+  <div>
+    <label>Курс валюти (до основної)<br>
+      <input type="number" name="rate" step="0.000001" value="{{ '%.6f'|format(item.rate) if item else '1.000000' }}">
+    </label>
+  </div>
+
+  <div>
+    <label>
+      <input type="checkbox" name="active" {% if item and item.active %}checked{% endif %}>
+      Активна
+    </label>
+  </div>
+
+  <div style="margin-top:12px;">
+    <button type="submit">{{ "Створити" if mode == "create" else "Зберегти" }}</button>
+    <a href="/ui/currencies">Скасувати</a>
+  </div>
+</form>
+
+{% if mode == "edit" and item %}
+  <hr>
+  <p><strong>Основна:</strong>
+    {% if item.is_primary %}
+      так
+    {% else %}
+      ні
+      <form method="post" action="/ui/currencies/{{ item.id }}/set-primary" style="display:inline">
+        <button type="submit">Зробити основною</button>
+      </form>
+    {% endif %}
+  </p>
+{% endif %}
+
+{% endblock %}

@@ -20,23 +20,33 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
-def upgrade():
-    # Для SQLite зміна default робиться через alter_column з server_default (SQLAlchemy сам перегенерує DDL)
-    op.alter_column(
-        "supplier_products",
-        "updated_at",
-        existing_type=sa.DateTime(),
-        server_default=sa.text("(CURRENT_TIMESTAMP)"),
-        existing_nullable=True,   # якщо було True
-        nullable=False,
+def upgrade() -> None:
+    # 1) Заповнити NULL-и поточним часом, щоб можна було зробити NOT NULL
+    op.execute(
+        "UPDATE supplier_products "
+        "SET updated_at = CURRENT_TIMESTAMP "
+        "WHERE updated_at IS NULL"
     )
 
-def downgrade():
-    op.alter_column(
-        "supplier_products",
-        "updated_at",
-        existing_type=sa.DateTime(),
-        server_default=None,
-        nullable=True,
-    )
+    # 2) Змінити колонку в batch-режимі (SQLite-friendly)
+    with op.batch_alter_table("supplier_products", recreate="always") as batch:
+        batch.alter_column(
+            "updated_at",
+            existing_type=sa.DateTime(timezone=False),
+            nullable=False,
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+            existing_server_default=None,
+        )
+
+
+def downgrade() -> None:
+    # Повернути nullable та прибрати server_default
+    with op.batch_alter_table("supplier_products", recreate="always") as batch:
+        batch.alter_column(
+            "updated_at",
+            existing_type=sa.DateTime(timezone=False),
+            nullable=True,
+            server_default=None,
+            existing_server_default=sa.text("CURRENT_TIMESTAMP"),
+        )
 

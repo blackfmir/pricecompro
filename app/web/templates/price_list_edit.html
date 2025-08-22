@@ -37,6 +37,20 @@
     </div>
   </div>
 
+  <div class="grid gap-2">
+    <label class="grid gap-1">
+      <span class="text-sm text-slate-600">Currency (default)</span>
+      <select name="default_currency_id" class="border px-3 py-2 rounded">
+        <option value="">— not set —</option>
+        {% for c in currencies %}
+          <option value="{{ c.id }}" {% if selected_currency_id == c.id %}selected{% endif %}>
+            {{ c.iso_code }} — {{ c.name }} {% if c.is_primary %}(primary){% endif %}
+          </option>
+        {% endfor %}
+      </select>
+    </label>
+  </div>
+
   <!-- Source-specific blocks -->
   <div id="block_local" class="grid gap-2 hidden">
     <h2 class="text-lg font-semibold">Local source</h2>

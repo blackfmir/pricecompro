@@ -3,17 +3,16 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
-    JSON,
     Boolean,
-    Date,
     DateTime,
+    Float,
     ForeignKey,
-    Numeric,
+    Integer,
     String,
-    UniqueConstraint,
-    func,
+    Text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.sql import func
 
 from app.models.base import Base
 
@@ -21,67 +20,53 @@ if TYPE_CHECKING:
     from .price_list import PriceList
     from .supplier import Supplier
 
+
 class SupplierProduct(Base):
     __tablename__ = "supplier_products"
-    __table_args__ = (
-        UniqueConstraint("supplier_id", "supplier_sku", name="uq_supplier_supplier_sku"),
-    )
 
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
 
-    supplier_id: Mapped[int] = mapped_column(ForeignKey("suppliers.id", ondelete="CASCADE"), index=True)
-    price_list_id: Mapped[int | None] = mapped_column(ForeignKey("price_lists.id", ondelete="SET NULL"), index=True)
-    import_batch_id: Mapped[int | None] = mapped_column(index=True)
+    supplier_id: Mapped[int] = mapped_column(ForeignKey("suppliers.id"), index=True)
+    price_list_id: Mapped[int | None] = mapped_column(ForeignKey("price_lists.id"), nullable=True, index=True)
+    import_batch_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Ідентифікатори
-    supplier_sku: Mapped[str] = mapped_column(String(128), index=True)
-    manufacturer_sku: Mapped[str | None] = mapped_column(String(128))
-    mpn: Mapped[str | None] = mapped_column(String(128))
-    gtin: Mapped[str | None] = mapped_column(String(32), index=True)
-    ean: Mapped[str | None] = mapped_column(String(32), index=True)
-    upc: Mapped[str | None] = mapped_column(String(32), index=True)
-    jan: Mapped[str | None] = mapped_column(String(32), index=True)
-    isbn: Mapped[str | None] = mapped_column(String(32), index=True)
+    supplier_sku: Mapped[str | None] = mapped_column(String(128), index=True, nullable=True)
+    manufacturer_sku: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    mpn: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    gtin: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    ean: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    upc: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    jan: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    isbn: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
-    # Назви/класифікація
-    name: Mapped[str | None] = mapped_column(String(512))
-    brand_raw: Mapped[str | None] = mapped_column(String(128), index=True)
-    brand_id: Mapped[int | None] = mapped_column(ForeignKey("manufacturers.id", ondelete="SET NULL"), index=True)
-    category_raw: Mapped[str | None] = mapped_column(String(512))
-    category_path: Mapped[dict | list | None] = mapped_column(JSON)
-    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"), index=True)
-    location: Mapped[str | None] = mapped_column(String(128))
+    # Основні дані
+    name: Mapped[str | None] = mapped_column(String(300), index=True, nullable=True)
+    brand_raw: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    brand_id: Mapped[int | None] = mapped_column(ForeignKey("manufacturers.id"), nullable=True)
+    category_raw: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), nullable=True)
+    location: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
-    # Ціни/наявність/доставка
-    price_raw: Mapped[float | None] = mapped_column(Numeric(18, 2))
-    currency_raw: Mapped[str | None] = mapped_column(String(8))
-    qty_raw: Mapped[float | None] = mapped_column(Numeric(18, 3))
-    availability_text: Mapped[str | None] = mapped_column(String(128))
-    delivery_terms: Mapped[str | None] = mapped_column(String(128))
-    delivery_date: Mapped[Date | None] = mapped_column(Date)
+    # Ціни / валюта / кількість / доступність
+    price_raw: Mapped[float | None] = mapped_column(Float, nullable=True)
+    currency_raw: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    qty_raw: Mapped[float | None] = mapped_column(Float, nullable=True)
+    availability_text: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    delivery_terms: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    delivery_date: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
-    # Опис/медіа
-    short_description_raw: Mapped[str | None] = mapped_column(String(2000))
-    description_raw: Mapped[str | None] = mapped_column(String)  # TEXT
-    image_urls: Mapped[list[str] | None] = mapped_column(JSON)   # список URL
+    # Опис і фото
+    short_description_raw: Mapped[str | None] = mapped_column(Text, nullable=True)
+    description_raw: Mapped[str | None] = mapped_column(Text, nullable=True)
+    image_urls: Mapped[str | None] = mapped_column(Text, nullable=True)  # зберігаємо як JSON-рядок
 
-    # Резерв під майбутні опції/атрибути
-    attributes_raw: Mapped[dict | None] = mapped_column(JSON)
-
-    # Технічні
-    row_hash: Mapped[str | None] = mapped_column(String(64), index=True)
+    # Службові
+    row_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[object] = mapped_column(
-        DateTime(timezone=False),
-        server_default=func.now(),
-    )
+    created_at: Mapped[object] = mapped_column(DateTime(timezone=False), server_default=func.now())
+    updated_at: Mapped[object] = mapped_column(DateTime(timezone=False), server_default=func.now(), onupdate=func.now())
 
-    updated_at: Mapped[object] = mapped_column(
-        DateTime(timezone=False),
-        server_default=func.now(),   # <-- Додаємо дефолт на вставку
-        onupdate=func.now(),
-        nullable=False,              # <-- Явно не допускаємо NULL
-    )
-
+    # Зв’язки
     supplier: Mapped[Supplier] = relationship(back_populates="supplier_products")
     price_list: Mapped[PriceList] = relationship(back_populates="supplier_products")

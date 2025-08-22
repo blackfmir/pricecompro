@@ -1,59 +1,121 @@
-{% extends "base.html" %}
-{% block content %}
-<h1 class="text-xl font-bold mb-4">Currencies</h1>
+# --- Валюти: список
+@router.get("/ui/currencies", response_class=HTMLResponse)
+def ui_currencies_list(request: Request, db: DBSession):
+    items = currency_crud.list_(db)
+    return templates.TemplateResponse(
+        "currencies_list.html",
+        {"request": request, "items": items, "error": request.query_params.get("error")}
+    )
 
-<form method="post" action="/ui/currencies" class="grid gap-2 bg-white p-4 rounded-xl shadow mb-4">
-  <div class="grid grid-cols-6 gap-2">
-    <input name="name" placeholder="Name" class="border px-2 py-1 rounded col-span-2" required>
-    <input name="iso_code" placeholder="ISO (e.g. PLN)" class="border px-2 py-1 rounded">
-    <input name="symbol_left" placeholder="Symbol left" class="border px-2 py-1 rounded">
-    <input name="symbol_right" placeholder="Symbol right" class="border px-2 py-1 rounded">
-    <input type="number" name="decimals" value="2" min="0" max="8" class="border px-2 py-1 rounded">
-    <input type="number" step="0.0001" name="rate" value="1.0" class="border px-2 py-1 rounded">
-    <label class="inline-flex items-center gap-2">
-      <input type="checkbox" name="active" class="border"> Active
-    </label>
-  </div>
-  <button class="px-3 py-2 bg-slate-700 text-white rounded w-max">Add</button>
-</form>
+# --- Валюти: форма створення
+@router.get("/ui/currencies/new", response_class=HTMLResponse)
+def ui_currencies_new(request: Request):
+    return templates.TemplateResponse(
+        "currencies_form.html",
+        {"request": request, "mode": "create", "item": None, "error": None}
+    )
 
-<table class="min-w-full bg-white rounded-xl shadow">
-  <thead>
-    <tr class="text-left text-slate-600">
-      <th class="p-2">Primary</th>
-      <th class="p-2">Name</th>
-      <th class="p-2">ISO</th>
-      <th class="p-2">Symbol L</th>
-      <th class="p-2">Symbol R</th>
-      <th class="p-2">Decimals</th>
-      <th class="p-2">Rate</th>
-      <th class="p-2">Active</th>
-      <th class="p-2">Actions</th>
-    </tr>
-  </thead>
-  <tbody>
-  {% for c in items %}
-    <tr class="border-t">
-      <td class="p-2">
-        <form method="post" action="/ui/currencies/{{ c.id }}/set-primary">
-          <input type="radio" name="primary" {% if c.is_primary %}checked{% endif %} onchange="this.form.submit()">
-        </form>
-      </td>
-      <td class="p-2">{{ c.name }}</td>
-      <td class="p-2">{{ c.iso_code }}</td>
-      <td class="p-2">{{ c.symbol_left or '' }}</td>
-      <td class="p-2">{{ c.symbol_right or '' }}</td>
-      <td class="p-2">{{ c.decimals }}</td>
-      <td class="p-2">{{ c.rate }}</td>
-      <td class="p-2">{{ '✓' if c.active else '—' }}</td>
-      <td class="p-2">
-        <!-- (простота) лише видалення; редагування можна додати окремою сторінкою -->
-        <form method="post" action="/ui/currencies/{{ c.id }}/delete" onsubmit="return confirm('Delete currency {{ c.iso_code }}?')">
-          <button class="px-2 py-1 bg-red-600 text-white rounded">Delete</button>
-        </form>
-      </td>
-    </tr>
-  {% endfor %}
-  </tbody>
-</table>
-{% endblock %}
+# --- Валюти: створити
+@router.post("/ui/currencies")
+def ui_currencies_create(
+    request: Request,
+    db: DBSession,
+    name: FormStr,
+    iso_code: FormStr,
+    symbol_left: FormOptStr = None,
+    symbol_right: FormOptStr = None,
+    decimals: Annotated[int, Form(2)] = 2,  # noqa: B008 handled via Annotated
+    rate: Annotated[float, Form(1.0)] = 1.0,  # noqa: B008 handled via Annotated
+    active: FormBool = False,
+):
+    # простенька перевірка унікальності ISO
+    if currency_crud.get_by_iso(db, iso_code):
+        return templates.TemplateResponse(
+            "currencies_form.html",
+            {
+                "request": request,
+                "mode": "create",
+                "item": None,
+                "error": f"Валюта з ISO '{iso_code}' вже існує",
+            },
+            status_code=400,
+        )
+    payload = CurrencyCreate(
+        name=name,
+        iso_code=iso_code,
+        symbol_left=symbol_left,
+        symbol_right=symbol_right,
+        decimals=decimals,
+        rate=rate,
+        active=active,
+    )
+    currency_crud.create(db, payload)
+    return RedirectResponse(url="/ui/currencies", status_code=303)
+
+# --- Валюти: форма редагування
+@router.get("/ui/currencies/{currency_id}/edit", response_class=HTMLResponse)
+def ui_currencies_edit(request: Request, db: DBSession, currency_id: int):
+    item = currency_crud.get(db, currency_id)
+    if not item:
+        return RedirectResponse(url="/ui/currencies?error=Валюта+не+знайдена", status_code=303)
+    return templates.TemplateResponse(
+        "currencies_form.html",
+        {"request": request, "mode": "edit", "item": item, "error": None},
+    )
+
+# --- Валюти: зберегти редагування
+@router.post("/ui/currencies/{currency_id}/edit")
+def ui_currencies_update(
+    request: Request,
+    db: DBSession,
+    currency_id: int,
+    name: FormStr,
+    iso_code: FormStr,
+    symbol_left: FormOptStr = None,
+    symbol_right: FormOptStr = None,
+    decimals: Annotated[int, Form(2)] = 2,
+    rate: Annotated[float, Form(1.0)] = 1.0,
+    active: FormBool = False,
+):
+    # контроль унікальності ISO при зміні
+    other = currency_crud.get_by_iso(db, iso_code)
+    if other and other.id != currency_id:
+        item = currency_crud.get(db, currency_id)
+        return templates.TemplateResponse(
+            "currencies_form.html",
+            {
+                "request": request,
+                "mode": "edit",
+                "item": item,
+                "error": f"Інша валюта з ISO '{iso_code}' вже існує",
+            },
+            status_code=400,
+        )
+
+    payload = CurrencyUpdate(
+        name=name,
+        iso_code=iso_code,
+        symbol_left=symbol_left,
+        symbol_right=symbol_right,
+        decimals=decimals,
+        rate=rate,
+        active=active,
+    )
+    obj = currency_crud.update(db, currency_id, payload)
+    if not obj:
+        return RedirectResponse(url="/ui/currencies?error=Валюта+не+знайдена", status_code=303)
+    return RedirectResponse(url="/ui/currencies", status_code=303)
+
+# --- Валюти: зробити основною
+@router.post("/ui/currencies/{currency_id}/set-primary")
+def ui_currencies_set_primary(db: DBSession, currency_id: int):
+    ok = currency_crud.set_primary(db, currency_id)
+    url = "/ui/currencies" if ok else "/ui/currencies?error=Валюта+не+знайдена"
+    return RedirectResponse(url=url, status_code=303)
+
+# --- Валюти: видалити (з перевірками)
+@router.post("/ui/currencies/{currency_id}/delete")
+def ui_currencies_delete(db: DBSession, currency_id: int):
+    ok, err = currency_crud.delete_safe(db, currency_id)
+    url = "/ui/currencies" if ok else f"/ui/currencies?error={err.replace(' ', '+')}"
+    return RedirectResponse(url=url, status_code=303)

@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Annotated, Any, TypeAlias, cast
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
@@ -17,15 +17,23 @@ from app.crud import supplier as supplier_crud
 from app.db.session import SessionLocal
 from app.models.category import Category
 from app.models.manufacturer import Manufacturer
-from app.schemas.currency import CurrencyCreate
+from app.schemas.currency import CurrencyCreate, CurrencyUpdate
 from app.schemas.price_list import PriceListCreate, PriceListUpdate
 from app.schemas.supplier import SupplierCreate
 from app.schemas.supplier_product import SupplierProductCreate
 from app.services.importer import import_xlsx_bytes, import_xml_bytes
 from app.utils.storage import save_price_upload
 
+FormStr = Annotated[str, Form(...)]
+FormOptStr = Annotated[str | None, Form(None)]
+FormInt = Annotated[int, Form(...)]
+FormFloat = Annotated[float, Form(...)]
+FormBool = Annotated[bool, Form(False)]
+
 templates = Jinja2Templates(directory="app/web/templates")
 router = APIRouter()
+
+
 
 
 def get_db():
@@ -94,14 +102,12 @@ def ui_supplier_update(
 
 
 @router.post("/ui/suppliers/{supplier_id}/delete")
-def ui_supplier_delete(request: Request, db: DBSession, supplier_id: int):
-    ok, reason = supplier_crud.delete(db, supplier_id)
+def ui_suppliers_delete(request: Request, db: DBSession, supplier_id: int):
+    ok = supplier_crud.delete(db, supplier_id)
     if not ok:
-        msg = "Supplier not found" if reason == "not_found" else "Cannot delete: supplier has price lists"
-        return RedirectResponse(url=f"/ui/suppliers?err={msg}", status_code=303)
-    return RedirectResponse(url="/ui/suppliers?msg=deleted", status_code=303)
-
-
+        # можна вивести флеш-повідомлення або просто редирект
+        return RedirectResponse(url="/ui/suppliers?error=not_found", status_code=303)
+    return RedirectResponse(url="/ui/suppliers?deleted=1", status_code=303)
 
 # -------- Price lists
 @router.get("/ui/price-lists")
@@ -379,7 +385,6 @@ async def ui_price_list_update(request: Request, db: DBSession, pl_id: int):
         if spec:
             product_fields[key] = spec
 
-
     try:
         default_currency_id = int(str(form.get("default_currency_id"))) if form.get("default_currency_id") else None
     except ValueError:
@@ -595,34 +600,107 @@ def ui_delete_category_map(request: Request, db: DBSession, cm_id: int, supplier
     category_map_crud.delete(db, cm_id)
     return RedirectResponse(url=f"/ui/normalize?supplier_id={supplier_id}", status_code=303)
 
-@router.get("/ui/currencies")
-def ui_currencies(request: Request, db: DBSession):
+# --- Валюти: список
+@router.get("/ui/currencies", response_class=HTMLResponse)
+def ui_currencies_list(request: Request, db: DBSession):
     items = currency_crud.list_(db)
-    return templates.TemplateResponse("currencies_list.html", {"request": request, "items": items})
+    return templates.TemplateResponse(
+        "currencies_list.html",
+        {"request": request, "items": items, "error": request.query_params.get("error")}
+    )
 
+# --- Валюти: форма створення
+@router.get("/ui/currencies/new", response_class=HTMLResponse)
+def ui_currencies_new(request: Request):
+    return templates.TemplateResponse(
+        "currencies_form.html",
+        {"request": request, "mode": "create", "item": None, "error": None}
+    )
+
+# --- Валюти: створити
 @router.post("/ui/currencies")
-def ui_currencies_create(request: Request, db: DBSession,
-                         name: str = Form(...), iso_code: str = Form(...),
-                         symbol_left: str | None = Form(None),
-                         symbol_right: str | None = Form(None),
-                         decimals: int = Form(2), rate: float = Form(1.0),
-                         active: bool = Form(False)):
+def ui_currencies_create(
+    request: Request,
+    db: DBSession,
+    name: Annotated[str, Form(...)],
+    iso_code: Annotated[str, Form(...)],
+    symbol_left: Annotated[str | None, Form()] = None,
+    symbol_right: Annotated[str | None, Form()] = None,
+    decimals: Annotated[int, Form()] = 2,
+    rate: Annotated[float, Form()] = 1.0,
+    active: Annotated[bool, Form()] = True,
+):
     payload = CurrencyCreate(
-        name=name, iso_code=iso_code.upper(), symbol_left=symbol_left,
-        symbol_right=symbol_right, decimals=decimals, rate=rate, active=active
+        name=name,
+        iso_code=iso_code.upper(),
+        symbol_left=symbol_left or None,
+        symbol_right=symbol_right or None,
+        decimals=decimals,
+        rate=rate,
+        active=active,
     )
     currency_crud.create(db, payload)
     return RedirectResponse(url="/ui/currencies", status_code=303)
 
-@router.post("/ui/currencies/{currency_id}/set-primary")
-def ui_currencies_set_primary(request: Request, db: DBSession, currency_id: int):
-    currency_crud.set_primary(db, currency_id)
+# --- Валюти: форма редагування
+@router.get("/ui/currencies/{currency_id}/edit", response_class=HTMLResponse)
+def ui_currencies_edit(request: Request, db: DBSession, currency_id: int):
+    item = currency_crud.get(db, currency_id)
+    if not item:
+        return RedirectResponse(url="/ui/currencies?error=Валюта+не+знайдена", status_code=303)
+    return templates.TemplateResponse(
+        "currencies_form.html",
+        {"request": request, "mode": "edit", "item": item, "error": None},
+    )
+
+# --- Валюти: зберегти редагування
+@router.post("/ui/currencies/{currency_id}")
+def ui_currencies_update(
+    request: Request,
+    db: DBSession,
+    currency_id: int,
+    name: Annotated[str, Form(...)],
+    iso_code: Annotated[str, Form(...)],
+    symbol_left: Annotated[str | None, Form()] = None,
+    symbol_right: Annotated[str | None, Form()] = None,
+    decimals: Annotated[int, Form()] = 2,
+    rate: Annotated[float, Form()] = 1.0,
+    active: Annotated[bool, Form()] = True,
+):
+    payload = CurrencyUpdate(
+        name=name,
+        iso_code=iso_code.upper(),
+        symbol_left=symbol_left or None,
+        symbol_right=symbol_right or None,
+        decimals=decimals,
+        rate=rate,
+        active=active,
+    )
+    currency_crud.update_(db, currency_id, payload)
     return RedirectResponse(url="/ui/currencies", status_code=303)
 
+
+# --- Валюти: зробити основною
+@router.post("/ui/currencies/{currency_id}/set-primary")
+def ui_currencies_set_primary(db: DBSession, currency_id: int):
+    ok = currency_crud.set_primary(db, currency_id)
+    url = "/ui/currencies" if ok else "/ui/currencies?error=Валюта+не+знайдена"
+    return RedirectResponse(url=url, status_code=303)
+
+# --- Валюти: видалити (з перевірками)
 @router.post("/ui/currencies/{currency_id}/delete")
-def ui_currencies_delete(request: Request, db: DBSession, currency_id: int):
-    ok, err = currency_crud.delete(db, currency_id)
-    if not ok:
-        # TODO: показати повідомлення у UI; поки редірект
-        return RedirectResponse(url="/ui/currencies?error=1", status_code=303)
-    return RedirectResponse(url="/ui/currencies", status_code=303)
+def ui_currencies_delete(db: DBSession, currency_id: int):
+    ok, err = currency_crud.delete_safe(db, currency_id)
+    if ok:
+        return RedirectResponse(url="/ui/currencies", status_code=303)
+    err_msg = err or ""
+    return RedirectResponse(url=f"/ui/currencies?error={err_msg}", status_code=303)
+
+
+@router.get("/ui/categories", response_class=HTMLResponse)
+def ui_categories_wip(request: Request):
+    return HTMLResponse("<h2>Категорії</h2><p>Сторінка довідника в розробці.</p>")
+
+@router.get("/ui/products", response_class=HTMLResponse)
+def ui_products_wip(request: Request):
+    return HTMLResponse("<h2>Товари</h2><p>Сторінка довідника в розробці.</p>")
