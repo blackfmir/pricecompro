@@ -11,11 +11,13 @@ from sqlalchemy.orm import Session
 import app.crud.brand_map as brand_map_crud
 import app.crud.category_map as category_map_crud
 import app.crud.supplier_product as sp_crud
+from app.crud import currency as currency_crud
 from app.crud import price_list as price_list_crud
 from app.crud import supplier as supplier_crud
 from app.db.session import SessionLocal
 from app.models.category import Category
 from app.models.manufacturer import Manufacturer
+from app.schemas.currency import CurrencyCreate
 from app.schemas.price_list import PriceListCreate, PriceListUpdate
 from app.schemas.supplier import SupplierCreate
 from app.schemas.supplier_product import SupplierProductCreate
@@ -165,6 +167,11 @@ def ui_price_list_edit(request: Request, db: DBSession, pl_id: int):
     downloaded_path = src.get("downloaded_path", "")
     downloaded_url = src.get("downloaded_url", "")
 
+    #Валюта
+    currencies = currency_crud.list_(db)
+    primary = currency_crud.get_primary(db)
+    selected_currency_id = pl.default_currency_id or (primary.id if primary else None)
+
     # Налаштування під формат
     sheet = src.get("sheet", {}) or {}
     xlsx_sheet_by = sheet.get("by", "name")        # name | index
@@ -235,6 +242,8 @@ def ui_price_list_edit(request: Request, db: DBSession, pl_id: int):
             "xml_use_xpath": xml_use_xpath,
             "mapping_ui": mapping_ui,
             "image_urls_split": image_urls_split,
+            "currencies": currencies,
+            "selected_currency_id": selected_currency_id,
         },
     )
 
@@ -372,13 +381,19 @@ async def ui_price_list_update(request: Request, db: DBSession, pl_id: int):
 
     new_mapping = {"product_fields": product_fields} if product_fields else (pl.mapping or {})
 
+    try:
+        default_currency_id = int(str(form.get("default_currency_id"))) if form.get("default_currency_id") else None
+    except ValueError:
+        default_currency_id = None
+
     payload = PriceListUpdate(
         name=name,
-        format=fmt,
-        source_type=s_type,
+        format=format,
+        source_type=source_type,
         source_config=src,
-        mapping=new_mapping,
+        mapping=pl.mapping,
         active=pl.active,
+        default_currency_id=default_currency_id,
     )
     obj = price_list_crud.update(db, pl_id, payload)
     if not obj:
@@ -580,3 +595,34 @@ def ui_delete_category_map(request: Request, db: DBSession, cm_id: int, supplier
     category_map_crud.delete(db, cm_id)
     return RedirectResponse(url=f"/ui/normalize?supplier_id={supplier_id}", status_code=303)
 
+@router.get("/ui/currencies")
+def ui_currencies(request: Request, db: DBSession):
+    items = currency_crud.list_(db)
+    return templates.TemplateResponse("currencies_list.html", {"request": request, "items": items})
+
+@router.post("/ui/currencies")
+def ui_currencies_create(request: Request, db: DBSession,
+                         name: str = Form(...), iso_code: str = Form(...),
+                         symbol_left: str | None = Form(None),
+                         symbol_right: str | None = Form(None),
+                         decimals: int = Form(2), rate: float = Form(1.0),
+                         active: bool = Form(False)):
+    payload = CurrencyCreate(
+        name=name, iso_code=iso_code.upper(), symbol_left=symbol_left,
+        symbol_right=symbol_right, decimals=decimals, rate=rate, active=active
+    )
+    currency_crud.create(db, payload)
+    return RedirectResponse(url="/ui/currencies", status_code=303)
+
+@router.post("/ui/currencies/{currency_id}/set-primary")
+def ui_currencies_set_primary(request: Request, db: DBSession, currency_id: int):
+    currency_crud.set_primary(db, currency_id)
+    return RedirectResponse(url="/ui/currencies", status_code=303)
+
+@router.post("/ui/currencies/{currency_id}/delete")
+def ui_currencies_delete(request: Request, db: DBSession, currency_id: int):
+    ok, err = currency_crud.delete(db, currency_id)
+    if not ok:
+        # TODO: показати повідомлення у UI; поки редірект
+        return RedirectResponse(url="/ui/currencies?error=1", status_code=303)
+    return RedirectResponse(url="/ui/currencies", status_code=303)

@@ -10,9 +10,11 @@ import app.crud.category_map as category_map_crud
 
 # CRUD
 import app.crud.supplier_product as sp_crud
+from app.crud import currency as currency_crud
 from app.crud import price_list as price_list_crud
 from app.crud import supplier as supplier_crud
 from app.db.session import SessionLocal
+from app.schemas.currency import CurrencyCreate, CurrencyOut, CurrencyUpdate
 
 # Schemas
 from app.schemas.normalize import (
@@ -308,3 +310,33 @@ def apply_maps(db: DBSession, supplier_id: int):
         "updated_brands": updated_brands,
         "updated_categories": updated_categories,
     }
+
+# Currencies
+@router.post("/currencies", response_model=CurrencyOut)
+def create_currency(db: DBSession, payload: CurrencyCreate):
+    return currency_crud.create(db, payload)
+
+@router.get("/currencies", response_model=list[CurrencyOut])
+def list_currencies(db: DBSession, q: str | None = None):
+    return currency_crud.list_(db, q=q)
+
+@router.put("/currencies/{currency_id}", response_model=CurrencyOut)
+def update_currency(db: DBSession, currency_id: int, payload: CurrencyUpdate):
+    obj = currency_crud.update_(db, currency_id, payload)
+    if not obj:
+        raise HTTPException(status_code=404, detail="Currency not found")
+    return obj
+
+@router.delete("/currencies/{currency_id}")
+def delete_currency(db: DBSession, currency_id: int):
+    ok, err = currency_crud.delete(db, currency_id)
+    if not ok:
+        raise HTTPException(status_code=400, detail=err or "Delete failed")
+    return {"ok": True}
+
+@router.post("/currencies/{currency_id}/set-primary", response_model=CurrencyOut)
+def set_primary_currency(db: DBSession, currency_id: int):
+    obj = currency_crud.set_primary(db, currency_id)
+    if not obj:
+        raise HTTPException(status_code=404, detail="Currency not found")
+    return obj

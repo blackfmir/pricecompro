@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="text-xl font-bold mb-4">Currencies</h1>
+
+<form method="post" action="/ui/currencies" class="grid gap-2 bg-white p-4 rounded-xl shadow mb-4">
+  <div class="grid grid-cols-6 gap-2">
+    <input name="name" placeholder="Name" class="border px-2 py-1 rounded col-span-2" required>
+    <input name="iso_code" placeholder="ISO (e.g. PLN)" class="border px-2 py-1 rounded">
+    <input name="symbol_left" placeholder="Symbol left" class="border px-2 py-1 rounded">
+    <input name="symbol_right" placeholder="Symbol right" class="border px-2 py-1 rounded">
+    <input type="number" name="decimals" value="2" min="0" max="8" class="border px-2 py-1 rounded">
+    <input type="number" step="0.0001" name="rate" value="1.0" class="border px-2 py-1 rounded">
+    <label class="inline-flex items-center gap-2">
+      <input type="checkbox" name="active" class="border"> Active
+    </label>
+  </div>
+  <button class="px-3 py-2 bg-slate-700 text-white rounded w-max">Add</button>
+</form>
+
+<table class="min-w-full bg-white rounded-xl shadow">
+  <thead>
+    <tr class="text-left text-slate-600">
+      <th class="p-2">Primary</th>
+      <th class="p-2">Name</th>
+      <th class="p-2">ISO</th>
+      <th class="p-2">Symbol L</th>
+      <th class="p-2">Symbol R</th>
+      <th class="p-2">Decimals</th>
+      <th class="p-2">Rate</th>
+      <th class="p-2">Active</th>
+      <th class="p-2">Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for c in items %}
+    <tr class="border-t">
+      <td class="p-2">
+        <form method="post" action="/ui/currencies/{{ c.id }}/set-primary">
+          <input type="radio" name="primary" {% if c.is_primary %}checked{% endif %} onchange="this.form.submit()">
+        </form>
+      </td>
+      <td class="p-2">{{ c.name }}</td>
+      <td class="p-2">{{ c.iso_code }}</td>
+      <td class="p-2">{{ c.symbol_left or '' }}</td>
+      <td class="p-2">{{ c.symbol_right or '' }}</td>
+      <td class="p-2">{{ c.decimals }}</td>
+      <td class="p-2">{{ c.rate }}</td>
+      <td class="p-2">{{ '✓' if c.active else '—' }}</td>
+      <td class="p-2">
+        <!-- (простота) лише видалення; редагування можна додати окремою сторінкою -->
+        <form method="post" action="/ui/currencies/{{ c.id }}/delete" onsubmit="return confirm('Delete currency {{ c.iso_code }}?')">
+          <button class="px-2 py-1 bg-red-600 text-white rounded">Delete</button>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

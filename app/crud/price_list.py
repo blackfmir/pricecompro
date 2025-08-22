@@ -1,11 +1,17 @@
 from sqlalchemy.orm import Session
 
+from app.crud.currency import get_primary
 from app.models.price_list import PriceList
 from app.schemas.price_list import PriceListCreate, PriceListUpdate
 
 
-def create(db: Session, data: PriceListCreate) -> PriceList:
-    obj = PriceList(**data.model_dump())
+def create(db: Session, payload: PriceListCreate) -> PriceList:
+    data = payload.model_dump()
+    if data.get("default_currency_id") is None:
+        cur = get_primary(db)
+        if cur:
+            data["default_currency_id"] = cur.id
+    obj = PriceList(**data)
     db.add(obj)
     db.commit()
     db.refresh(obj)
