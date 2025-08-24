@@ -1,43 +1,38 @@
-from app.schemas.common import ORMModel
+from pydantic import BaseModel, Field
 
-
-class SupplierProductBase(ORMModel):
+class SupplierProductBase(BaseModel):
     supplier_id: int
-    price_list_id: int | None = None
-    supplier_sku: str
-    name: str | None = None
-    manufacturer_sku: str | None = None
-    mpn: str | None = None
-    gtin: str | None = None
-    ean: str | None = None
-    upc: str | None = None
-    jan: str | None = None
-    isbn: str | None = None
-    brand_raw: str | None = None
-    category_raw: str | None = None
+    pricelist_id: int
+    supplier_sku: str = Field(min_length=1, max_length=128)
+    name: str = Field(min_length=1, max_length=512)
+
     price_raw: float | None = None
     currency_raw: str | None = None
-    qty_raw: float | None = None
-    availability_text: str | None = None
-    delivery_terms: str | None = None
-    delivery_date: str | None = None
-    location: str | None = None
-    short_description_raw: str | None = None
-    description_raw: str | None = None
-    image_urls: list[str] | None = None
+    availability_raw: str | None = None
+
+    manufacturer_raw: str | None = None
+    manufacturer_id: int | None = None
+    category_raw: str | None = None
+    category_id: int | None = None
+
+    is_active: bool = True
 
 class SupplierProductCreate(SupplierProductBase):
     pass
 
-class SupplierProductUpdate(ORMModel):
+class SupplierProductUpdate(BaseModel):
+    # все опційно для патчів
     name: str | None = None
     price_raw: float | None = None
     currency_raw: str | None = None
-    qty_raw: float | None = None
-    availability_text: str | None = None
-    short_description_raw: str | None = None
-    description_raw: str | None = None
-    image_urls: list[str] | None = None
+    availability_raw: str | None = None
+    manufacturer_raw: str | None = None
+    manufacturer_id: int | None = None
+    category_raw: str | None = None
+    category_id: int | None = None
+    is_active: bool | None = None
 
 class SupplierProductOut(SupplierProductBase):
     id: int
+    class Config:
+        from_attributes = True

@@ -1,0 +1,15 @@
+{% macro text(id, name, label, value="", type="text", required=False, placeholder="") -%}
+  <div class="mb-3">
+    <label for="{{ id }}" class="form-label">{{ label }}</label>
+    <input id="{{ id }}" name="{{ name }}" class="form-control" type="{{ type }}"
+           value="{{ value }}" {% if required %}required{% endif %} placeholder="{{ placeholder }}">
+  </div>
+{%- endmacro %}
+
+{% macro checkbox(id, name, label, checked=False, value="true") -%}
+  <div class="form-check">
+    <input class="form-check-input" id="{{ id }}" name="{{ name }}" type="checkbox"
+           value="{{ value }}" {% if checked %}checked{% endif %}>
+    <label class="form-check-label" for="{{ id }}">{{ label }}</label>
+  </div>
+{%- endmacro %}

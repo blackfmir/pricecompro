@@ -1,0 +1,103 @@
+{% extends "layout.html" %}
+{% block content %}
+<h2>{{ "Редагування прайс-листа" if item else "Новий прайс-лист" }}</h2>
+
+{% if file_info %}
+<div class="card mb-4">
+  <div class="card-body">
+    <h5 class="card-title mb-3">Файл прайс-листа</h5>
+    <div class="row g-2">
+      <div class="col-md-6">
+        <div><strong>Назва файлу:</strong>
+          <a href="{{ file_info.file_url }}" target="_blank" rel="noopener">{{ file_info.file_name }}</a>
+        </div>
+        <div><strong>Каталог у сховищі:</strong> <code>{{ file_info.dir_rel }}</code></div>
+        <div><strong>Відносний шлях:</strong> <code>{{ file_info.path_rel }}</code></div>
+      </div>
+      <div class="col-md-6">
+        <div><strong>Розмір:</strong> {{ file_info.size_h }} ({{ file_info.size_bytes }} B)</div>
+        <div><strong>Створено:</strong> {{ file_info.created_at }}</div>
+        <div><strong>Змінено:</strong> {{ file_info.modified_at }}</div>
+      </div>
+    </div>
+    <div class="mt-3 d-flex gap-2">
+      <a class="btn btn-outline-primary" href="{{ file_info.file_url }}" target="_blank" rel="noopener">
+        <i class="bi bi-box-arrow-up-right"></i> Відкрити файл
+      </a>
+      <a class="btn btn-outline-secondary" href="/ui/pricelists/{{ item.id }}/upload">
+        <i class="bi bi-upload"></i> Завантажити новий файл
+      </a>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<form method="post" class="row g-3">
+
+  <div class="col-md-6">
+    <label for="plName" class="form-label">Назва</label>
+    <input class="form-control" id="plName" name="name" value="{{ item.name if item else '' }}" required>
+  </div>
+
+  <div class="col-md-6">
+    <label for="plSupplier" class="form-label">Постачальник</label>
+    <select class="form-select" id="plSupplier" name="supplier_id" required>
+      <option value="">— виберіть —</option>
+      {% for s in suppliers %}
+        <option value="{{ s.id }}" {% if item and item.supplier_id == s.id %}selected{% endif %}>
+          [{{ s.id }}] {{ s.name }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="col-md-4">
+    <label for="plSourceType" class="form-label">Джерело</label>
+    {% set st = (item.source_type if item else "local") %}
+    <select class="form-select" id="plSourceType" name="source_type">
+      <option value="local"  {% if st == "local" %}selected{% endif %}>local</option>
+      <option value="http"   {% if st == "http" %}selected{% endif %}>http</option>
+      <option value="ftp"    {% if st == "ftp" %}selected{% endif %}>ftp</option>
+      <option value="parser" {% if st == "parser" %}selected{% endif %}>parser</option>
+    </select>
+  </div>
+
+  <div class="col-md-4">
+    <label for="plFormat" class="form-label">Формат</label>
+    {% set fmt = (item.format if item else "xlsx") %}
+    <select class="form-select" id="plFormat" name="format">
+      <option value="xlsx" {% if fmt == "xlsx" %}selected{% endif %}>xlsx</option>
+      <option value="csv"  {% if fmt == "csv" %}selected{% endif %}>csv</option>
+      <option value="xml"  {% if fmt == "xml" %}selected{% endif %}>xml</option>
+      <option value="json" {% if fmt == "json" %}selected{% endif %}>json</option>
+      <option value="html" {% if fmt == "html" %}selected{% endif %}>html</option>
+    </select>
+  </div>
+
+  <div class="col-md-4 d-flex align-items-end">
+    <div class="form-check">
+      <input class="form-check-input" type="checkbox" id="plActive" name="active"
+             value="true" {% if not item or item.active %}checked{% endif %}>
+      <label class="form-check-label" for="plActive">Активний</label>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <label for="plSourceCfg" class="form-label">Source config (JSON)</label>
+    <textarea class="form-control" id="plSourceCfg" name="source_config" rows="4"
+      placeholder='{"url":"...","path":"...","login":"..."}'>{{ item.source_config if item and item.source_config else "" }}</textarea>
+  </div>
+
+  <div class="col-12">
+    <label for="plMapping" class="form-label">Mapping (JSON)</label>
+    <textarea class="form-control" id="plMapping" name="mapping" rows="6"
+      placeholder='{"product_fields":{"name":{"type":"cell","value":"B"}, "supplier_sku":{"type":"cell","value":"A"}}}'>{{ item.mapping if item and item.mapping else "" }}</textarea>
+  </div>
+
+  <hr class="my-4">
+  <div class="col-12">
+    <button type="submit" class="btn btn-primary"><i class="bi bi-floppy"></i> Зберегти</button>
+    <a class="btn btn-danger" href="/ui/pricelists"><i class="bi bi-arrow-return-left"></i> Скасувати</a>
+  </div>
+</form>
+{% endblock %}

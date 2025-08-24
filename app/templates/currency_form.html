@@ -1,0 +1,57 @@
+{% extends "layout.html" %}
+{% block content %}
+<h2>{{ "Редагування валюти" if item else "Нова валюта" }}</h2>
+
+<form method="post" class="row g-3">
+
+  <div class="col-md-3">
+    <label for="curCode" class="form-label">Код</label>
+    <input class="form-control" id="curCode" name="code" value="{{ item.code if item else '' }}" placeholder="UAH / PLN / USD" required>
+  </div>
+
+  <div class="col-md-5">
+    <label for="curName" class="form-label">Назва</label>
+    <input class="form-control" id="curName" name="name" value="{{ item.name if item else '' }}" placeholder="Українська гривня / Польський злотий" required>
+  </div>
+
+  <div class="col-md-4">
+    <label for="curRate" class="form-label">Курс до базової</label>
+    <input class="form-control" id="curRate" type="number" step="0.000001" min="0.000001" name="rate_to_base"
+           value="{{ item.rate_to_base if item else '1.000000' }}" required>
+  </div>
+
+  <div class="col-md-4">
+    <label for="curSymL" class="form-label">Символ ліворуч</label>
+    <input class="form-control" id="curSymL" name="symbol_left" value="{{ item.symbol_left if item else '' }}" placeholder="₴ / $ / €">
+  </div>
+
+  <div class="col-md-4">
+    <label for="curSymR" class="form-label">Символ праворуч</label>
+    <input class="form-control" id="curSymR" name="symbol_right" value="{{ item.symbol_right if item else '' }}" placeholder="грн / zł / ₽">
+  </div>
+
+  <div class="col-md-4">
+    <label for="curDec" class="form-label">Кількість знаків</label>
+    <input class="form-control" id="curDec" name="decimals" type="number" min="0" max="8" step="1" value="{{ item.decimals if item else 2 }}">
+  </div>
+
+  <div class="col-md-6 d-flex align-items-end gap-4">
+    <div class="form-check">
+      <input class="form-check-input" type="checkbox" id="curManual" name="manual_override"
+             value="true" {% if item and item.manual_override %}checked{% endif %}>
+      <label class="form-check-label" for="curManual">Ручне перевизначення</label>
+    </div>
+    <div class="form-check">
+      <input class="form-check-input" type="checkbox" id="curActive" name="active"
+             value="true" {% if not item or item.active %}checked{% endif %}>
+      <label class="form-check-label" for="curActive">Активна</label>
+    </div>
+  </div>
+
+  <hr class="my-4">
+  <div class="col-12">
+    <button type="submit" class="btn btn-primary"><i class="bi bi-floppy"></i> Зберегти</button>
+    <a class="btn btn-danger" href="/ui/currencies"><i class="bi bi-arrow-return-left"></i> Скасувати</a>
+  </div>
+</form>
+{% endblock %}

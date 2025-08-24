@@ -1,43 +1,41 @@
-# app/main.py
-from __future__ import annotations
-
 from pathlib import Path
-
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import router as api_router
+from app.api.routes import api_router
+from app.web.router import ui_router
 from app.core.config import settings
-
-# DEV: імпорт БД і моделей до create_all
 from app.db.session import engine
-from app.models import (  # noqa: F401
-    brand_map,
-    category,
-    category_map,
-    manufacturer,
-    price_list,
-    supplier,
-    supplier_product,
-)
 from app.models.base import Base
-from app.web.views import router as ui_router
+from app import models  # noqa: F401  # імпорт щоб зареєструвати моделі
 
-app = FastAPI(title=settings.app_name)
 
-# DEV: автостворення таблиць (прибери в проді)
-Base.metadata.create_all(bind=engine)
+def create_app() -> FastAPI:
+    app = FastAPI(title=settings.APP_NAME)
 
-# API + UI
-app.include_router(api_router, prefix="/api")
-app.include_router(ui_router)
+    # CORS (можеш вимкнути, якщо не треба)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
-# /static — тільки якщо каталог існує
-static_dir = Path(__file__).parent / "static"
-if static_dir.is_dir():
-    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+    # Статичні файли та майбутнє сховище
+    Path("app/static").mkdir(parents=True, exist_ok=True)
+    app.mount("/static", StaticFiles(directory="app/static"), name="static")
+    app.mount(settings.STORAGE_PUBLIC_BASE, StaticFiles(directory=settings.STORAGE_DIR), name="storage")
 
-# /storage — завжди; створюємо каталог і монтуємо
-storage_dir = Path(settings.storage_dir)
-storage_dir.mkdir(parents=True, exist_ok=True)
-app.mount("/storage", StaticFiles(directory=str(storage_dir)), name="storage")
+
+    # Роутери
+    app.include_router(api_router)
+    app.include_router(ui_router)
+
+    # Ініціалізація БД (для швидкого старту без alembic)
+    Base.metadata.create_all(bind=engine)
+    return app
+
+
+app = create_app()

@@ -1,0 +1,60 @@
+{% extends "layout.html" %}
+{% block content %}
+<h2>Валюти</h2>
+
+<p>
+  <a class="btn btn-primary" href="/ui/currencies/new">
+    <i class="bi bi-plus"></i> Додати валюту
+  </a>
+</p>
+
+<table class="table">
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Код</th>
+      <th>Назва</th>
+      <th>Курс до базової</th>
+      <th>Л/П символ</th>
+      <th>Знаки</th>
+      <th>Ручне</th>
+      <th>Активна</th>
+      <th>Основна</th>
+      <th>Оновлено</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for c in items %}
+    <tr>
+      <th scope="row">{{ c.id }}</th>
+      <td>{{ c.code }}</td>
+      <td>{{ c.name }}</td>
+      <td>{{ '%.6f'|format(c.rate_to_base) }}</td>
+      <td>{{ c.symbol_left }} | {{ c.symbol_right }}</td>
+      <td>{{ c.decimals }}</td>
+      <td>{{ "так" if c.manual_override else "ні" }}</td>
+      <td>{{ "так" if c.active else "ні" }}</td>
+      <td>
+        <form action="/ui/currencies/{{ c.id }}/set-base" method="post">
+          <input class="form-check-input" type="radio" name="base_currency"
+                 {% if c.is_base %}checked{% endif %}
+                 onchange="this.form.submit()" title="Зробити основною">
+        </form>
+      </td>
+      <td>{{ c.updated_at or "" }}</td>
+      <td class="d-flex gap-2">
+        <a class="btn btn-secondary" href="/ui/currencies/{{ c.id }}/edit" title="Редагувати">
+          <i class="bi bi-pencil-square"></i>
+        </a>
+        <form action="/ui/currencies/{{ c.id }}/delete" method="post" style="display:inline;">
+          <button class="btn btn-danger" type="submit" onclick="return confirm('Видалити валюту?');" title="Видалити">
+            <i class="bi bi-trash"></i>
+          </button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

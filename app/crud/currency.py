@@ -1,49 +1,71 @@
-from __future__ import annotations
-
-from sqlalchemy import select
+from sqlalchemy import select, func, update as sa_update
 from sqlalchemy.orm import Session
-
-from app.models.currency import Currency
-from app.models.price_list import PriceList  # ДОДАЙ ЦЕ
+from app.models.currency import currencies
 from app.schemas.currency import CurrencyCreate, CurrencyUpdate
 
 
-def list_(db: Session, q: str | None = None) -> list[Currency]:
-    stmt = select(Currency)
-    if q:
-        like = f"%{q}%"
-        stmt = stmt.where(
-            (Currency.name.ilike(like)) | (Currency.iso_code.ilike(like))
-        )
-    return list(db.execute(stmt).scalars().all())
+def list_(db: Session) -> list[currencies]:
+    return list(db.scalars(select(currencies).order_by(currencies.code.asc())).all())
 
 
-def get(db: Session, currency_id: int) -> Currency | None:
-    return db.get(Currency, currency_id)
+def get(db: Session, currency_id: int) -> currencies | None:
+    return db.get(currencies, currency_id)
 
 
-def create(db: Session, payload: CurrencyCreate) -> Currency:
-    obj = Currency(**payload.model_dump())
+def get_base(db: Session) -> currencies | None:
+    return db.scalar(select(currencies).where(currencies.is_base.is_(True)))
+
+
+def create(db: Session, data: CurrencyCreate) -> currencies:
+    total = db.scalar(select(func.count()).select_from(currencies)) or 0
+    obj = currencies(
+        code=data.code,
+        name=data.name,
+        rate_to_base=data.rate_to_base,
+        manual_override=data.manual_override,
+        active=data.active,
+        is_base=(total == 0),
+        symbol_left=data.symbol_left or "",
+        symbol_right=data.symbol_right or "",
+        decimals=data.decimals,
+    )
     db.add(obj)
     db.commit()
     db.refresh(obj)
+
     return obj
 
 
-def update_(db: Session, currency_id: int, payload: CurrencyUpdate) -> Currency | None:
-    obj = db.get(Currency, currency_id)
+def update(db: Session, currency_id: int, data: CurrencyUpdate) -> currencies | None:
+    obj = get(db, currency_id)
     if not obj:
         return None
-    data = payload.model_dump(exclude_unset=True)
-    for k, v in data.items():
-        setattr(obj, k, v)
+
+    if data.code is not None:
+        obj.code = data.code
+    if data.name is not None:
+        obj.name = data.name
+    if data.rate_to_base is not None:
+        obj.rate_to_base = data.rate_to_base
+    if data.manual_override is not None:
+        obj.manual_override = data.manual_override
+    if data.active is not None:
+        obj.active = data.active
+    if data.symbol_left is not None:
+        obj.symbol_left = data.symbol_left
+    if data.symbol_right is not None:
+        obj.symbol_right = data.symbol_right
+    if data.decimals is not None:
+        obj.decimals = data.decimals
+
     db.commit()
     db.refresh(obj)
+
     return obj
 
 
 def delete(db: Session, currency_id: int) -> bool:
-    obj = db.get(Currency, currency_id)
+    obj = get(db, currency_id)
     if not obj:
         return False
     db.delete(obj)
@@ -51,46 +73,13 @@ def delete(db: Session, currency_id: int) -> bool:
     return True
 
 
-# НОВЕ: безпечне видалення з перевірками (is_primary та використання у прайс-листах)
-def delete_safe(db: Session, currency_id: int) -> tuple[bool, str | None]:
-    obj = db.get(Currency, currency_id)
-    if not obj:
-        return False, "Currency not found"
-
-    if obj.is_primary:
-        return False, "Cannot delete primary currency"
-
-    in_use = (
-        db.query(PriceList)
-        .filter(PriceList.default_currency_id == currency_id)
-        .count()
-    )
-    if in_use:
-        return False, f"Currency is used by {in_use} price list(s)"
-
-    db.delete(obj)
-    db.commit()
-    return True, None
-
-def get_primary(db: Session) -> Currency | None:
-    """Повертає поточну основну валюту або None."""
-    stmt = select(Currency).where(Currency.is_primary.is_(True))
-    return db.execute(stmt).scalars().first()
-
-
-def set_primary(db: Session, currency_id: int) -> Currency | None:
-    """Робить валюту основною (скидаючи прапорець у всіх інших)."""
-    obj = db.get(Currency, currency_id)
+def set_base(db: Session, currency_id: int) -> currencies | None:
+    obj = get(db, currency_id)
     if not obj:
         return None
-
-    # скидаємо поточну основну, якщо є
-    db.query(Currency).filter(Currency.is_primary.is_(True)).update(
-        {Currency.is_primary: False}
-    )
-    # ставимо нову основну
-    obj.is_primary = True
+    db.execute(sa_update(currencies).values(is_base=False))
+    obj.is_base = True
+    # курс НЕ змінюємо
     db.commit()
     db.refresh(obj)
     return obj
-

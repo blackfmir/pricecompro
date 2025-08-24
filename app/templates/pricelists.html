@@ -1,0 +1,134 @@
+{% extends "layout.html" %}
+{% block content %}
+<h2>Прайс-листи</h2>
+
+<p>
+  <a class="btn btn-primary" href="/ui/pricelists/new">
+    <i class="bi bi-plus"></i> Додати прайс-лист
+  </a>
+</p>
+
+<table class="table">
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Назва</th>
+      <th>Постачальник</th>
+      <th>Джерело</th>
+      <th>Формат</th>
+      <th>Активний</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for p in items %}
+    <tr>
+      <th scope="row">{{ p.id }}</th>
+      <td>{{ p.name }}</td>
+      <td>{{ suppliers.get(p.supplier_id) or p.supplier_id }}</td>
+      <td>{{ p.source_type }}</td>
+      <td>{{ p.format }}</td>
+      <td>{{ "так" if p.active else "ні" }}</td>
+      <td class="d-flex gap-2">
+        <a class="btn btn-outline-primary" href="/ui/pricelists/{{ p.id }}/upload" title="Завантажити файл">
+            <i class="bi bi-upload"></i>
+        </a>
+        <button class="btn btn-primary js-import-btn" data-id="{{ p.id }}" title="Імпорт">
+            <span class="js-icon"><i class="bi bi-cloud-download"></i></span>
+            <span class="spinner-border spinner-border-sm d-none js-spinner" role="status" aria-hidden="true"></span>
+            <span class="visually-hidden">Loading...</span>
+        </button>
+
+        <a class="btn btn-outline-secondary" href="/ui/pricelists/{{ p.id }}/map" title="Мапінг">
+            <i class="bi bi-diagram-3"></i>
+        </a>
+        <a class="btn btn-secondary" href="/ui/pricelists/{{ p.id }}/edit" title="Редагувати">
+            <i class="bi bi-pencil-square"></i>
+        </a>
+        <form action="/ui/pricelists/{{ p.id }}/delete" method="post" style="display:inline;">
+            <button class="btn btn-danger" type="submit" onclick="return confirm('Видалити прайс-лист?');" title="Видалити">
+            <i class="bi bi-trash"></i>
+            </button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
+
+<div class="modal fade" id="importResultModal" tabindex="-1" aria-labelledby="importResultLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-success-subtle">
+        <h5 class="modal-title" id="importResultLabel">Результат імпорту</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрити"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-1"><strong>Створено:</strong> <span id="impIns">0</span></p>
+        <p class="mb-1"><strong>Оновлено:</strong> <span id="impUpd">0</span></p>
+        <p class="mb-0"><strong>Попереджень:</strong> <span id="impWarn">0</span></p>
+      </div>
+      <div class="modal-footer">
+        <a id="impViewBtn" class="btn btn-outline-secondary" href="#" target="_blank" rel="noopener">
+          <i class="bi bi-box-arrow-up-right"></i> Переглянути товари
+        </a>
+        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Ок</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  function setLoading(btn, on) {
+    if (!btn) return;
+    const icon = btn.querySelector('.js-icon');
+    const spinner = btn.querySelector('.js-spinner');
+    btn.disabled = !!on;
+    if (icon) icon.classList.toggle('d-none', !!on);
+    if (spinner) spinner.classList.toggle('d-none', !on);
+  }
+
+  async function importPricelist(btn, id) {
+    setLoading(btn, true);
+    try {
+      const res = await fetch(`/ui/pricelists/${id}/import-ajax`, { method: 'POST' });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.message || 'Помилка імпорту');
+
+      // заповнимо модалку
+      document.getElementById('impIns').textContent = data.inserted ?? 0;
+      document.getElementById('impUpd').textContent = data.updated ?? 0;
+      document.getElementById('impWarn').textContent = data.warnings ?? 0;
+
+      // лінк на перегляд товарів конкретного прайс-листа
+      const viewBtn = document.getElementById('impViewBtn');
+      if (viewBtn) viewBtn.href = `/ui/supplier-products?pricelist_id=${encodeURIComponent(data.pricelist_id)}`;
+
+      // показати модалку
+      const modalEl = document.getElementById('importResultModal');
+      if (modalEl) new bootstrap.Modal(modalEl).show();
+    } catch (err) {
+      // просте повідомлення про помилку (можемо винести в toast)
+      alert('Помилка імпорту: ' + (err && err.message ? err.message : err));
+    } finally {
+      setLoading(btn, false);
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('.js-import-btn').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        const id = btn.getAttribute('data-id');
+        if (!id) return;
+        console.log("Виконуємо імпорт прайс-листа id=" + id);
+        importPricelist(btn, id);
+      });
+    });
+  });
+</script>
+

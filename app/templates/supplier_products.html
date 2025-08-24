@@ -1,0 +1,117 @@
+{% extends "layout.html" %}
+{% block content %}
+<h2>Товари постачальників</h2>
+
+<form class="row gy-2 gx-2 align-items-end mb-3" method="get">
+  <div class="col-md-3">
+    <label class="form-label">Постачальник</label>
+    <select class="form-select" name="supplier_id">
+      <option value="">— всі —</option>
+      {% for sid, sname in suppliers.items() %}
+        <option value="{{ sid }}" {% if supplier_id == sid %}selected{% endif %}>[{{ sid }}] {{ sname }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Прайс-лист</label>
+    <select class="form-select" name="pricelist_id">
+      <option value="">— всі —</option>
+      {% for pid, pname in pricelists.items() %}
+        <option value="{{ pid }}" {% if pricelist_id == pid %}selected{% endif %}>[{{ pid }}] {{ pname }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Пошук (SKU/Назва)</label>
+    <input class="form-control" name="q" value="{{ q }}">
+  </div>
+  <div class="col-md-2">
+    <label class="form-label">Показати по</label>
+    <select class="form-select" name="limit">
+      {% for l in [30,50,100] %}
+        <option value="{{ l }}" {% if limit == l %}selected{% endif %}>{{ l }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-1">
+    <button class="btn btn-primary w-100" type="submit"><i class="bi bi-search"></i></button>
+  </div>
+  <input type="hidden" name="page" value="1"> {# при зміні фільтрів починаємо з 1 сторінки #}
+</form>
+
+<table class="table table-sm">
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Supplier</th>
+      <th>Pricelist</th>
+      <th>SKU</th>
+      <th>Назва</th>
+      <th>Ціна</th>
+      <th>Вал.</th>
+      <th>Наявність</th>
+      <th>Виробник</th>
+      <th>Категорія</th>
+      <th>Оновлено</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for p in items %}
+      <tr>
+        <th scope="row">{{ p.id }}</th>
+        <td>{{ suppliers.get(p.supplier_id, p.supplier_id) }}</td>
+        <td>{{ pricelists.get(p.pricelist_id, p.pricelist_id) }}</td>
+        <td><code>{{ p.supplier_sku }}</code></td>
+        <td>{{ p.name }}</td>
+        <td>{{ '%.4f'|format(p.price_raw) if p.price_raw is not none else '' }}</td>
+        <td>{{ p.currency_raw or '' }}</td>
+        <td>{{ p.availability_raw or '' }}</td>
+        <td>{{ p.manufacturer_raw or '' }}</td>
+        <td>{{ p.category_raw or '' }}</td>
+        <td>{{ p.updated_at or '' }}</td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<nav aria-label="Пагінація">
+  <ul class="pagination">
+    <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+      <a class="page-link" href="?page={{ page-1 }}&limit={{ limit }}&supplier_id={{ supplier_id or '' }}&pricelist_id={{ pricelist_id or '' }}&q={{ q }}">«</a>
+    </li>
+
+    {% if pages_total <= 10 %}
+      {% for p in page_numbers %}
+        <li class="page-item {% if p == page %}active{% endif %}">
+          <a class="page-link" href="?page={{ p }}&limit={{ limit }}&supplier_id={{ supplier_id or '' }}&pricelist_id={{ pricelist_id or '' }}&q={{ q }}">{{ p }}</a>
+        </li>
+      {% endfor %}
+    {% else %}
+      {# показуємо 1 … блок … last #}
+      {% set first = page_numbers[0] %}
+      {% set last = page_numbers[-1] %}
+      <li class="page-item {% if first == page %}active{% endif %}">
+        <a class="page-link" href="?page={{ first }}&limit={{ limit }}&supplier_id={{ supplier_id or '' }}&pricelist_id={{ pricelist_id or '' }}&q={{ q }}">{{ first }}</a>
+      </li>
+      {% if page_numbers[1] > first + 0 %}
+        <li class="page-item disabled"><span class="page-link">…</span></li>
+      {% endif %}
+      {% for p in page_numbers[1:-1] %}
+        <li class="page-item {% if p == page %}active{% endif %}">
+          <a class="page-link" href="?page={{ p }}&limit={{ limit }}&supplier_id={{ supplier_id or '' }}&pricelist_id={{ pricelist_id or '' }}&q={{ q }}">{{ p }}</a>
+        </li>
+      {% endfor %}
+      {% if page_numbers[-2] < last %}
+        <li class="page-item disabled"><span class="page-link">…</span></li>
+      {% endif %}
+      <li class="page-item {% if last == page %}active{% endif %}">
+        <a class="page-link" href="?page={{ last }}&limit={{ limit }}&supplier_id={{ supplier_id or '' }}&pricelist_id={{ pricelist_id or '' }}&q={{ q }}">{{ last }}</a>
+      </li>
+    {% endif %}
+
+    <li class="page-item {% if page >= pages_total %}disabled{% endif %}">
+      <a class="page-link" href="?page={{ page+1 }}&limit={{ limit }}&supplier_id={{ supplier_id or '' }}&pricelist_id={{ pricelist_id or '' }}&q={{ q }}">»</a>
+    </li>
+  </ul>
+</nav>
+{% endblock %}

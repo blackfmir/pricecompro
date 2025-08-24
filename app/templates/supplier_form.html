@@ -1,0 +1,29 @@
+{% extends "layout.html" %}
+{% block content %}
+<h2>{{ "Редагування" if item else "Новий постачальник" }}</h2>
+
+<form method="post">
+  <div class="mb-3">
+    <label for="supplierFormInputName" class="form-label">Назва</label>
+    <input name="name" class="form-control" id="supplierFormInputName" value="{{ item.name if item else '' }}" required>
+  </div>
+
+  <div class="mb-3">
+    <label for="supplierFormInputCode" class="form-label">Код (внутр.)</label>
+    <input name="code" class="form-control" id="supplierFormInputCode" value="{{ item.code if item else '' }}" required>
+  </div>
+
+  <hr class="my-4">
+
+  <div class="form-check">
+    <input type="checkbox" name="active" class="form-check-input" id="supplierFormInputActive" value="true" {% if not item or item.active %}checked{% endif %}>
+    <label class="form-check-label" for="supplierFormInputActive">Активний</label>
+  </div>
+
+  <hr class="my-4">
+  <div>
+    <button class="btn btn-primary" type="submit"><i class="bi bi-floppy"></i> Зберегти</button>
+    <a class="btn btn-danger" href="/ui/suppliers"><i class="bi bi-arrow-return-left"></i> Скасувати</a>
+  </div>
+</form>
+{% endblock %}

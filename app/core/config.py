@@ -1,21 +1,21 @@
-# app/core/config.py
-from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pathlib import Path
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    # Python-імена (нижній регістр); .env -> alias у ВЕРХНЬОМУ регістрі
-    database_url: str = Field(default="sqlite:///./pricecompro.db", alias="DATABASE_URL")
-    app_env: str = Field(default="dev", alias="APP_ENV")
-    app_name: str = Field(default="Price Complex Processor (PriceComPro)", alias="APP_NAME")
-    storage_dir: str = Field(default="storage", alias="STORAGE_DIR")
+    APP_NAME: str = "PriceComPro"
+    # Для старту — sqlite у корені. Перейдемо на Postgres пізніше.
+    DATABASE_URL: str = "sqlite:///pricecompro.db"
 
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore",
-        populate_by_name=True,  # дозволяє використовувати python-імена
-    )
+    # Локальне файлове сховище (наступні етапи його використають)
+    STORAGE_DIR: str = str((Path(__file__).resolve().parents[2] / "storage").absolute())
+    STORAGE_PUBLIC_BASE: str = "/storage"
+
+    class Config:
+        env_file = ".env"
 
 
 settings = Settings()
+
+# Гарантуємо існування storage/
+Path(settings.STORAGE_DIR).mkdir(parents=True, exist_ok=True)

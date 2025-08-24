@@ -1,0 +1,24 @@
+{% extends "layout.html" %}
+{% block content %}
+<h2>Завантаження файлу для прайс-листа: <strong>{{ item.name }}</strong></h2>
+
+<form method="post" enctype="multipart/form-data" class="mb-4">
+  <div class="mb-3">
+    <label for="plFile" class="form-label">Файл (xlsx/csv/xml/json/html)</label>
+    <input class="form-control" type="file" id="plFile" name="file" required>
+  </div>
+  <button class="btn btn-primary" type="submit">
+    <i class="bi bi-upload"></i> Завантажити
+  </button>
+  <a class="btn btn-danger" href="/ui/pricelists"><i class="bi bi-arrow-return-left"></i> Назад</a>
+</form>
+
+{% if last_path %}
+  <div class="alert alert-info">
+    Останній завантажений файл: <code>{{ last_path }}</code>
+    {% if last_url %}
+      — <a href="{{ last_url }}" target="_blank" rel="noopener">відкрити</a>
+    {% endif %}
+  </div>
+{% endif %}
+{% endblock %}

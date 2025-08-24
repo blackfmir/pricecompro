@@ -1,0 +1,32 @@
+{% extends "layout.html" %}
+{% block content %}
+<h2>Постачальники</h2>
+<p><a class="btn btn-primary" href="/ui/suppliers/new"><i class="bi bi-plus"></i> Додати постачальника</a></p>
+<table class="table">
+  <thead>
+    <tr>
+        <th>ID</th>
+        <th>Назва</th>
+        <th>Код</th>
+        <th>Активний</th>
+        <th></th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for s in items %}
+    <tr>
+      <th scope="row">{{ s.id }}</th>
+      <td>{{ s.name }}</td>
+      <td>{{ s.code or "" }}</td>
+      <td>{{ "так" if s.active else "ні" }}</td>
+      <td>
+        <a class="btn btn-secondary" href="/ui/suppliers/{{ s.id }}/edit" title="Редагувати"><i class="bi bi-pencil-square"></i></a>
+        <form action="/ui/suppliers/{{ s.id }}/delete" method="post" style="display:inline;">
+          <button class="btn btn-danger" type="submit" onclick="return confirm('Видалити постачальника?');" title="Видалити"><i class="bi bi-trash"></i></button>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
