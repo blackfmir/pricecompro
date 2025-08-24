@@ -1,0 +1,41 @@
+# venv / editors
+.venv/
+env/
+*.swp
+.vscode/
+.idea/
+
+# python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pytest_cache/
+.mypy_cache/
+.pytype/
+
+# build
+build/
+dist/
+*.egg-info/
+
+# local data
+*.db
+pricecompro.db
+storage/
+app/storage/
+app/**/storage/
+logs/
+*.log
+
+# env / secrets
+.env
+.env.*
+!.env.example
+
+# notebooks
+*.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,6 +1,7 @@
 from __future__ import annotations
 from io import BytesIO
-from typing import Tuple, Any, Iterable
+from typing import Tuple, Any, Iterable, cast
+
 
 import pandas as pd
 from lxml import etree
@@ -95,13 +96,22 @@ def preview_xlsx_bytes(*, data: bytes, mapping: dict, source_config: dict, limit
         rows.append(item)
     return rows, errors
 
-
-def _iter_xml_items(root: etree._Element, container: str, use_xpath: bool) -> Iterable[etree._Element]:
+def _iter_xml_items(root: etree._Element, container: str, use_xpath: bool) -> list[etree._Element]:
+    """
+    Повертаємо лише елементи (_Element) і гарантуємо список для mypy.
+    """
     if use_xpath:
-        return root.xpath(container)
-    # простий варіант: усі елементи з тегом container у глибині
-    return root.findall(f".//{container}")
-
+        res_any = root.xpath(container)
+        if isinstance(res_any, list):
+            seq: list[Any] = res_any
+        elif isinstance(res_any, tuple):
+            seq = list(res_any)
+        else:
+            # якщо xpath повернув скаляр (str/bool/float/bytes) — елементів немає
+            seq = []
+        elems = [n for n in seq if isinstance(n, etree._Element)]
+        return elems
+    return list(root.findall(f".//{container}"))
 
 def preview_xml_bytes(
     *, data: bytes, mapping: dict, source_config: dict, limit: int = 20
@@ -130,9 +140,14 @@ def preview_xml_bytes(
                 child = elem.find(val)
                 item[fname] = _norm_str(child.text if child is not None else "")
             elif ftype == "xpath":
-                # відносний xpath від elem
                 try:
-                    nodes = elem.xpath(val)
+                    nodes_any = elem.xpath(val)
+                    if isinstance(nodes_any, list):
+                        nodes: list[Any] = nodes_any
+                    elif isinstance(nodes_any, tuple):
+                        nodes = list(nodes_any)
+                    else:
+                        nodes = [nodes_any]
                     if nodes:
                         node = nodes[0]
                         if isinstance(node, etree._Element):
@@ -144,6 +159,7 @@ def preview_xml_bytes(
                 except Exception:
                     item[fname] = ""
                     errors.append(f"Bad xpath for field '{fname}': {val}")
+
             elif ftype == "literal":
                 item[fname] = _norm_str(val)
             else:

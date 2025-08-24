@@ -2,7 +2,6 @@ import json
 from urllib.parse import quote
 from pathlib import Path
 from datetime import datetime
-from io import BytesIO
 
 from fastapi import APIRouter, Depends, Request, Form, UploadFile, File
 
@@ -102,8 +101,7 @@ def ui_pricelist_edit(pr_id: int, request: Request, db: Session = Depends(get_db
             p = Path(abs_path)
             if p.exists() and p.is_file():
                 stat = p.stat()
-                # просте «олюднення» розміру
-                size = stat.st_size
+                size: float = float(stat.st_size)   # ← було int, через /= ставало float і mypy сварився
                 for unit in ["B", "KB", "MB", "GB"]:
                     if size < 1024.0:
                         size_h = f"{size:.1f} {unit}"
@@ -289,7 +287,8 @@ async def ui_pricelist_upload(pr_id: int, file: UploadFile = File(...), db: Sess
         return RedirectResponse(url="/ui/pricelists?msg=" + quote("Прайс-лист не знайдено"), status_code=303)
 
     data = await file.read()
-    rel, url = save_upload(f"pricelists/{pr_id}", file.filename, data)
+    fname = file.filename or "upload.bin"   # ← гарантуємо str
+    rel, url = save_upload(f"pricelists/{pr_id}", fname, data)
 
     # збережемо в source_config останній шлях та URL
     src_cfg = {}
@@ -316,7 +315,9 @@ def ui_pricelist_map(pr_id: int, request: Request, db: Session = Depends(get_db)
     if not item:
         return RedirectResponse(url="/ui/pricelists", status_code=303)
 
-    # прочитаємо останній завантажений файл
+    preview_rows: list[dict[str, str]] = []
+    preview_errors: list[str] = []
+
     src_cfg = {}
     if item.source_config:
         try:
@@ -430,6 +431,7 @@ def ui_pricelist_map_save(
     if fmt == "csv":
         options = {"encoding": csv_encoding, "delimiter": csv_delimiter, "skip_rows": max(0, int(csv_skip_rows))}
     elif fmt in ("xlsx", "xls"):
+        sheet_val: int | str
         try:
             sheet_val = int(xlsx_sheet)
         except ValueError:

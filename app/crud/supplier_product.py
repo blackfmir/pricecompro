@@ -2,7 +2,7 @@ from typing import Iterable
 from sqlalchemy import select, func, and_
 from sqlalchemy.orm import Session
 from app.models.supplier_product import supplier_products as SP
-from app.schemas.supplier_product import SupplierProductCreate, SupplierProductUpdate
+from app.schemas.supplier_product import SupplierProductUpdate
 
 def list_(
     db: Session,
