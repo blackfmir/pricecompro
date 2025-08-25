@@ -1,10 +1,11 @@
 from __future__ import annotations
 from io import BytesIO
-from typing import Tuple, Any, Iterable, cast
-
+from typing import Tuple, Any, Dict, List, Iterable, cast
 
 import pandas as pd
 from lxml import etree
+import json as _json
+
 
 
 def _norm_str(v: Any) -> str:
@@ -40,7 +41,8 @@ def preview_csv_bytes(*, data: bytes, mapping: dict, source_config: dict, limit:
     except Exception as e:
         return [], [f"CSV read error: {e}"]
 
-    fields = mapping.get("fields", {})
+    fields = _combine_fields(mapping)
+
     rows: list[dict] = []
     for _, row in df.head(limit).iterrows():
         item: dict[str, Any] = {}
@@ -75,7 +77,8 @@ def preview_xlsx_bytes(*, data: bytes, mapping: dict, source_config: dict, limit
     except Exception as e:
         return [], [f"XLSX read error: {e}"]
 
-    fields = mapping.get("fields", {})
+    fields = _combine_fields(mapping)
+
     rows: list[dict] = []
     for _, row in df.head(limit).iterrows():
         item: dict[str, Any] = {}
@@ -126,7 +129,8 @@ def preview_xml_bytes(
     except Exception as e:
         return [], [f"XML parse error: {e}"]
 
-    fields = mapping.get("fields", {})
+    fields = _combine_fields(mapping)
+
     rows: list[dict] = []
     for i, elem in enumerate(_iter_xml_items(root, container, use_xpath)):
         if i >= limit:
@@ -229,12 +233,9 @@ def _normalize_encoding(enc: str | None) -> str:
     return enc
 
 def _parse_price(v: Any) -> float | None:
-    if v is None:
-        return None
     s = str(v).strip()
     if not s:
         return None
-    # простенький парсер: прибираємо пробіли, замінимо кому на крапку
     s = s.replace(" ", "").replace(",", ".")
     try:
         return float(s)
@@ -242,9 +243,11 @@ def _parse_price(v: Any) -> float | None:
         return None
 
 def to_supplier_products(rows: list[dict]) -> list[dict]:
-    """Перекладає розпарсені поля в структуру для supplier_products."""
+    """Перекладає розпарсені поля в структуру для supplier_products, решту кладе в extra."""
+    base_keys = {"supplier_sku","name","price","availability","manufacturer","category","currency"}
     out: list[dict] = []
     for r in rows:
+        extra = {k: v for k, v in r.items() if k not in base_keys}
         out.append({
             "supplier_sku": r.get("supplier_sku", "") or "",
             "name": r.get("name", "") or "",
@@ -253,5 +256,48 @@ def to_supplier_products(rows: list[dict]) -> list[dict]:
             "availability_raw": r.get("availability"),
             "manufacturer_raw": r.get("manufacturer"),
             "category_raw": r.get("category"),
+            "extra": extra,  # ← віддамо в CRUD, він покладе у extra_json
         })
     return out
+
+
+REQUIRED_FIELDS = ("supplier_sku", "name", "price_raw")
+
+def split_valid_invalid(sp_rows: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """
+    Ділить розпарсені рядки на валідні для запису й невалідні (з причиною).
+    Обов'язкові: supplier_sku, name, price_raw (не None).
+    """
+    valid: List[Dict[str, Any]] = []
+    invalid: List[Dict[str, Any]] = []
+
+    for r in sp_rows:
+        sku = str(r.get("supplier_sku", "") or "").strip()
+        name = str(r.get("name", "") or "").strip()
+        price_raw = r.get("price_raw", None)
+
+        reason = None
+        if not sku:
+            reason = "missing_sku"
+        elif not name:
+            reason = "missing_name"
+        elif price_raw is None:
+            reason = "missing_or_bad_price"
+
+        if reason:
+            bad = dict(r)
+            bad["__reason"] = reason
+            invalid.append(bad)
+        else:
+            valid.append(r)
+    return valid, invalid
+
+def _combine_fields(mapping: dict) -> dict:
+    fields = dict(mapping.get("fields", {}))
+    for spec in mapping.get("extra", []) or []:
+        key = (spec or {}).get("key")
+        if not key:
+            continue
+        fields[key] = {"type": spec.get("type", "literal"), "value": spec.get("value", "")}
+    return fields
+

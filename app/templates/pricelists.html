@@ -55,7 +55,6 @@
     {% endfor %}
   </tbody>
 </table>
-{% endblock %}
 
 <div class="modal fade" id="importResultModal" tabindex="-1" aria-labelledby="importResultLabel" aria-hidden="true">
   <div class="modal-dialog">
@@ -67,7 +66,13 @@
       <div class="modal-body">
         <p class="mb-1"><strong>Створено:</strong> <span id="impIns">0</span></p>
         <p class="mb-1"><strong>Оновлено:</strong> <span id="impUpd">0</span></p>
-        <p class="mb-0"><strong>Попереджень:</strong> <span id="impWarn">0</span></p>
+        <p class="mb-1"><strong>Попереджень (парсинг):</strong> <span id="impWarn">0</span></p>
+        <p class="mb-0">
+          <strong>Пропущено (обов’язкові поля):</strong> <span id="impSkipped">0</span>
+          <span id="impErrorsLinkWrap" class="ms-2 d-none">
+            — <a id="impErrorsLink" href="#" target="_blank" rel="noopener">завантажити деталі (CSV)</a>
+          </span>
+        </p>
       </div>
       <div class="modal-footer">
         <a id="impViewBtn" class="btn btn-outline-secondary" href="#" target="_blank" rel="noopener">
@@ -103,6 +108,19 @@
       document.getElementById('impIns').textContent = data.inserted ?? 0;
       document.getElementById('impUpd').textContent = data.updated ?? 0;
       document.getElementById('impWarn').textContent = data.warnings ?? 0;
+      document.getElementById('impSkipped').textContent = data.skipped ?? 0;
+
+      const wrap = document.getElementById('impErrorsLinkWrap');
+      const link = document.getElementById('impErrorsLink');
+      if (wrap && link) {
+        if (data.errors_url) {
+          link.href = data.errors_url;
+          wrap.classList.remove('d-none');
+        } else {
+          wrap.classList.add('d-none');
+          link.removeAttribute('href');
+        }
+      }
 
       // лінк на перегляд товарів конкретного прайс-листа
       const viewBtn = document.getElementById('impViewBtn');
@@ -131,4 +149,10 @@
     });
   });
 </script>
+
+
+
+
+
+{% endblock %}
 

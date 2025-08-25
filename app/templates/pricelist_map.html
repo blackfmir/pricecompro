@@ -54,8 +54,54 @@
         {{ row("Виробник", "manufacturer") }}
         {{ row("Категорія", "category") }}
         {{ row("Валюта", "currency") }}
+
       </div>
     </div>
+
+    <!-- ДОДАТКОВІ ПОЛЯ -->
+    <div class="card mt-3">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <strong>Додаткові поля</strong>
+        <div>
+          <button type="button" class="btn btn-sm btn-outline-primary" id="btnAddExtra"><i class="bi bi-plus"></i></button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div id="extraRows"></div>
+        <p class="text-muted small mb-0">Оберіть поле → тип мапінгу → значення. В кінці списку полів є опція «Додати нове поле».</p>
+      </div>
+    </div>
+
+    <!-- Шаблон рядка -->
+    <template id="tplExtraRow">
+      <div class="row g-2 align-items-center mb-2 extra-row">
+        <div class="col-md-4">
+          <select class="form-select extra-key" name="extra_key">
+            <option value="" disabled selected>— виберіть поле —</option>
+            {% for k, label in standard_fields %}
+              <option value="{{ k }}">{{ label }} ({{ k }})</option>
+            {% endfor %}
+            {% for cf in custom_fields %}
+              <option value="{{ cf.code }}">[custom] {{ cf.name }} ({{ cf.code }})</option>
+            {% endfor %}
+            <option value="__add__">➕ Додати нове поле…</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <select class="form-select" name="extra_type"> 
+            {% for t in ["col","literal","tag","xpath"] %}
+              <option value="{{ t }}">{{ t }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-4">
+          <input  class="form-control" name="extra_value" placeholder="напр. 5 / //desc / статичний текст"> 
+        </div>
+        <div class="col-md-1 d-grid">
+          <button type="button" class="btn btn-outline-danger btn-remove-extra"><i class="bi bi-trash"></i></button>
+        </div>
+      </div>
+    </template>
 
     <!-- Блок налаштувань формату -->
     <div class="card mt-3">
@@ -166,4 +212,113 @@
     </div>
   </div>
 </form>
+
+<script>
+  const existingExtra = {{ (mapping.extra or []) | tojson | safe }};
+</script>
+
+<!-- Модалка створення користувацького поля -->
+<div class="modal fade" id="addFieldModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form class="modal-content" id="addFieldForm">
+      <div class="modal-header">
+        <h5 class="modal-title">Нове поле</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрити"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-2">
+          <label class="form-label">Назва</label>
+          <input class="form-control" name="name" required>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Код (аліас)</label>
+          <input class="form-control" name="code" placeholder="авто якщо пусто">
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Тип</label>
+          <select class="form-select" name="data_type">
+            <option value="text">text</option>
+            <option value="number">number</option>
+            <option value="date">date</option>
+            <option value="bool">bool</option>
+          </select>
+        </div>
+        <div class="text-muted small">Після створення поле одразу стане доступним у списку.</div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Створити</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+(function(){
+  const rows = document.getElementById('extraRows');
+  const tpl = document.getElementById('tplExtraRow');
+  const addBtn = document.getElementById('btnAddExtra');
+
+  function addRow(prefill) {
+    const node = tpl.content.cloneNode(true);
+    const rowEl = node.querySelector('.extra-row');
+    const keyEl = node.querySelector('.extra-key');
+    const typeEl = node.querySelector('select[name="extra_type[]"]');
+    const valEl = node.querySelector('input[name="extra_value[]"]');
+
+    if (prefill) {
+      // проставимо значення
+      if (prefill.key) {
+        const opt = [...keyEl.options].find(o => o.value === prefill.key);
+        if (opt) opt.selected = true;
+      }
+      if (prefill.type) typeEl.value = prefill.type;
+      if (prefill.value) valEl.value = prefill.value;
+    }
+
+    // реакція на вибір "__add__"
+    keyEl.addEventListener('change', function(){
+      if (this.value === '__add__') {
+        this.value = ''; // відкотимо
+        const modal = new bootstrap.Modal(document.getElementById('addFieldModal'));
+        modal.show();
+
+        const form = document.getElementById('addFieldForm');
+        form.onsubmit = async (e) => {
+          e.preventDefault();
+          const fd = new FormData(form);
+          const res = await fetch('/ui/fields/create-ajax', {method: 'POST', body: fd});
+          if (!res.ok) { alert('Помилка створення поля'); return; }
+          const data = await res.json();
+          if (!data.ok) { alert(data.message || 'Помилка'); return; }
+
+          // додамо опцію до ВСІХ селектів "key"
+          document.querySelectorAll('select.extra-key').forEach(sel => {
+            const o = document.createElement('option');
+            o.value = data.code;
+            o.textContent = `[custom] ${data.name} (${data.code})`;
+            // вставимо перед "__add__"
+            const addOpt = [...sel.options].find(x => x.value === '__add__');
+            sel.insertBefore(o, addOpt);
+          });
+          // виберемо у поточному рядку
+          keyEl.value = data.code;
+          modal.hide();
+          form.reset();
+        };
+      }
+    });
+
+    node.querySelector('.btn-remove-extra').addEventListener('click', function(){
+      rowEl.remove();
+    });
+
+    rows.appendChild(node);
+  }
+
+  addBtn?.addEventListener('click', () => addRow());
+  (existingExtra || []).forEach(addRow);
+})();
+</script>
+
+
 {% endblock %}

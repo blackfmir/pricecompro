@@ -2,6 +2,9 @@ import json
 from urllib.parse import quote
 from pathlib import Path
 from datetime import datetime
+from io import StringIO   # ← ДОДАТИ
+import csv 
+from typing import List
 
 from fastapi import APIRouter, Depends, Request, Form, UploadFile, File
 
@@ -14,6 +17,7 @@ from app.api.deps import get_db
 from app.crud import pricelists as crud
 from app.crud import supplier as supplier_crud
 from app.crud import supplier_product as sp_crud
+from app.crud import custom_field as cf_crud
 
 from app.schemas.pricelists import PricelistCreate, PricelistUpdate
 
@@ -248,13 +252,42 @@ def ui_pricelist_import_ajax(pr_id: int, db: Session = Depends(get_db)):
     rows, errors = preview_from_file(data=data, fmt=item.format, mapping=mapping, source_config=options, limit=200000)
     items_norm = to_supplier_products(rows)
 
-    # 4) upsert
-    stats = sp_crud.upsert_many(db, supplier_id=item.supplier_id, pricelist_id=item.id, items=items_norm)
+    # 4) валідація обов'язкових полів
+    from app.services.importer import split_valid_invalid  # локальний імпорт, щоб уникнути циклів
+    valid_items, invalid_rows = split_valid_invalid(items_norm)
+
+    # 5) upsert у БД лише валідних
+    stats = sp_crud.upsert_many(
+        db,
+        supplier_id=item.supplier_id,
+        pricelist_id=item.id,
+        items=valid_items,                                          # ← ВАЖЛИВО
+    )
+
+    # 6) якщо є невалідні — формуємо CSV і кладемо у сховище
+    errors_url = None
+    if invalid_rows:
+        buf = StringIO()
+        fieldnames = ["__reason","supplier_sku","name","price","price_raw","currency_raw","availability_raw","manufacturer_raw","category_raw"]
+        writer = csv.DictWriter(buf, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        for r in invalid_rows:
+            # додамо оригінальне price (якщо було)
+            if "price" not in r and "price_raw" in r:
+                r["price"] = r.get("price_raw")
+            writer.writerow(r)
+        csv_bytes = buf.getvalue().encode("utf-8-sig")
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        rel, url = save_upload(f"pricelists/{item.id}/logs", f"errors_{item.id}_{ts}.csv", csv_bytes)
+        errors_url = url
+
     return JSONResponse({
         "ok": True,
         "inserted": stats.get("inserted", 0),
         "updated": stats.get("updated", 0),
         "warnings": len(errors),
+        "skipped": len(invalid_rows),
+        "errors_url": errors_url,
         "message": f"Імпорт виконано для прайс-листа #{item.id}",
         "pricelist_id": item.id,
     })
@@ -366,6 +399,22 @@ def ui_pricelist_map(pr_id: int, request: Request, db: Session = Depends(get_db)
             data=file_bytes, fmt=fmt, mapping=mapping, source_config=options, limit=20
         )
 
+    custom_fields = cf_crud.list_(db, active_only=True)
+
+    standard_fields = [
+        ("description", "Опис"),
+        ("images", "Зображення (URL/CSV)"),
+        ("ean", "EAN"),
+        ("upc", "UPC"),
+        ("mpn", "MPN"),
+        ("weight", "Вага"),
+        ("width", "Ширина"),
+        ("height", "Висота"),
+        ("length", "Довжина"),
+        ("color", "Колір"),
+        ("size", "Розмір"),
+    ]
+
     return templates.TemplateResponse(
         "pricelist_map.html",
         {
@@ -375,6 +424,8 @@ def ui_pricelist_map(pr_id: int, request: Request, db: Session = Depends(get_db)
             "file_meta": file_meta,
             "preview_rows": preview_rows,
             "preview_errors": preview_errors,
+            "custom_fields": custom_fields,
+            "standard_fields": standard_fields,
         },
     )
 
@@ -408,7 +459,11 @@ def ui_pricelist_map_save(
     xlsx_skip_rows: int = Form(1),         # ← NEW
     xml_container: str = Form("product"),
     xml_use_xpath: bool = Form(False),
+    extra_key: List[str] = Form(default=[]),
+    extra_type: List[str] = Form(default=[]),
+    extra_value: List[str] = Form(default=[]),
 ):
+    
     item = crud.get(db, pr_id)
     if not item:
         return RedirectResponse(url="/ui/pricelists", status_code=303)
@@ -424,6 +479,7 @@ def ui_pricelist_map_save(
         "manufacturer": {"type": manufacturer_type, "value": manufacturer_value},
         "category": {"type": category_type, "value": category_value},
         "currency": {"type": currency_type, "value": currency_value},
+        
     }
 
     # збираємо options залежно від формату
@@ -440,7 +496,15 @@ def ui_pricelist_map_save(
     elif fmt == "xml":
         options = {"container": xml_container, "use_xpath": bool(xml_use_xpath)}
 
-    mapping = {"fields": fields, "options": options}
+    extra: list[dict] = []
+    for k, t, v in zip(extra_key, extra_type, extra_value):
+        k = (k or "").strip()
+        if not k:
+            continue
+        extra.append({"key": k, "type": t or "literal", "value": v or ""})
+
+    mapping = {"fields": fields, "options": options, "extra": extra}
+
     # зберігаємо
     item.mapping = json.dumps(mapping, ensure_ascii=False)
     db.commit()

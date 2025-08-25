@@ -3,6 +3,8 @@ from sqlalchemy import select, func, and_
 from sqlalchemy.orm import Session
 from app.models.supplier_product import supplier_products as SP
 from app.schemas.supplier_product import SupplierProductUpdate
+import json
+
 
 def list_(
     db: Session,
@@ -37,6 +39,8 @@ def upsert_many(
     if not items:
         return {"inserted": 0, "updated": 0}
 
+    extra_json = json.dumps(it.get("extra") or {}, ensure_ascii=False)
+
     skus = [str(i.get("supplier_sku", "")).strip() for i in items if i.get("supplier_sku")]
     existing = {}
     if skus:
@@ -48,8 +52,10 @@ def upsert_many(
     for it in items:
         sku = str(it.get("supplier_sku", "")).strip()
         name = str(it.get("name", "")).strip()
-        if not sku or not name:
-            continue  # пропускаємо брак даних
+        price_raw = it.get("price_raw", None)
+        
+        if not sku or not name or price_raw is None:
+            continue
 
         target = existing.get(sku)
         if target is None:
@@ -63,6 +69,7 @@ def upsert_many(
                 availability_raw=it.get("availability_raw"),
                 manufacturer_raw=it.get("manufacturer_raw"),
                 category_raw=it.get("category_raw"),
+                extra_json=extra_json,
                 is_active=True,
             )
             db.add(target)
@@ -75,6 +82,7 @@ def upsert_many(
             target.availability_raw = it.get("availability_raw")
             target.manufacturer_raw = it.get("manufacturer_raw")
             target.category_raw = it.get("category_raw")
+            target.extra_json = extra_json
             upd += 1
 
     db.commit()

@@ -1,0 +1,57 @@
+{% extends "layout.html" %}
+{% block content %}
+<h2>Керування полями</h2>
+
+<form class="row g-2 mb-3" method="post" action="/ui/fields/new">
+  <div class="col-md-4">
+    <label class="form-label">Назва</label>
+    <input class="form-control" name="name" required>
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Код (аліас)</label>
+    <input class="form-control" name="code" placeholder="auto якщо пусто">
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Тип</label>
+    <select class="form-select" name="data_type">
+      <option value="text">text</option>
+      <option value="number">number</option>
+      <option value="date">date</option>
+      <option value="bool">bool</option>
+    </select>
+  </div>
+  <div class="col-md-2 d-grid">
+    <label class="form-label">&nbsp;</label>
+    <button class="btn btn-primary" type="submit"><i class="bi bi-plus"></i> Додати</button>
+  </div>
+</form>
+
+<table class="table table-sm">
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Назва</th>
+      <th>Код</th>
+      <th>Тип</th>
+      <th>Активне</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for f in items %}
+      <tr>
+        <th scope="row">{{ f.id }}</th>
+        <td>{{ f.name }}</td>
+        <td><code>{{ f.code }}</code></td>
+        <td>{{ f.data_type }}</td>
+        <td>{{ "так" if f.active else "ні" }}</td>
+        <td>
+          <form action="/ui/fields/{{ f.id }}/delete" method="post" style="display:inline;">
+            <button class="btn btn-danger btn-sm" onclick="return confirm('Видалити поле?');"><i class="bi bi-trash"></i></button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

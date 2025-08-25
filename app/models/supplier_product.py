@@ -1,6 +1,7 @@
-from sqlalchemy import Integer, String, Boolean, Float, DateTime, func, Index
+from sqlalchemy import Integer, String, Boolean, Float, DateTime, func, Index, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from app.models.base import Base
+
 
 class supplier_products(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -25,6 +26,8 @@ class supplier_products(Base):
 
     created_at: Mapped["DateTime"] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped["DateTime"] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    extra_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # довільні додаткові атрибути
 
     __table_args__ = (
         Index("uq_sup_prod_supplier_sku", "supplier_id", "supplier_sku", unique=True),
