@@ -78,6 +78,9 @@
         <a id="impViewBtn" class="btn btn-outline-secondary" href="#" target="_blank" rel="noopener">
           <i class="bi bi-box-arrow-up-right"></i> Переглянути товари
         </a>
+        <a id="impBatchBtn" class="btn btn-outline-primary" href="#" target="_blank" rel="noopener">
+          <i class="bi bi-journal-text"></i> Деталі імпорту
+        </a>
         <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Ок</button>
       </div>
     </div>
@@ -126,6 +129,11 @@
       const viewBtn = document.getElementById('impViewBtn');
       if (viewBtn) viewBtn.href = `/ui/supplier-products?pricelist_id=${encodeURIComponent(data.pricelist_id)}`;
 
+      const batchBtn = document.getElementById('impBatchBtn');
+      if (batchBtn && data.batch_id) {
+        batchBtn.href = `/ui/import-batches?pricelist_id=${encodeURIComponent(data.pricelist_id)}`;
+      }
+      
       // показати модалку
       const modalEl = document.getElementById('importResultModal');
       if (modalEl) new bootstrap.Modal(modalEl).show();

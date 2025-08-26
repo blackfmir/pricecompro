@@ -1,0 +1,638 @@
+{% extends "layout.html" %}
+{% block content %}
+<h2>{{ "Редагування парсера" if item else "Новий парсер" }}</h2>
+
+{% if request.query_params.get('err') %}
+  <div class="alert alert-danger">{{ request.query_params.get('err') }}</div>
+{% endif %}
+{% if request.query_params.get('msg') %}
+  <div class="alert alert-success">{{ request.query_params.get('msg') }}</div>
+{% endif %}
+
+<form method="post" action="{{ '/ui/scrapers/new' if not item else '/ui/scrapers/' ~ item.id ~ '/save-rules' }}" id="scraperForm">
+  <div class="row g-3">
+    <div class="col-md-4">
+      <label class="form-label">Постачальник</label>
+      <select class="form-select" name="supplier_id" {% if item %}disabled{% endif %} required>
+        {% for s in suppliers %}
+          <option value="{{ s.id }}" {% if item and item.supplier_id==s.id %}selected{% endif %}>[{{ s.id }}] {{ s.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label">Назва</label>
+      <input class="form-control" name="name" value="{{ item.name if item else '' }}" {% if item %}disabled{% endif %} required>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label">Pricelist (куди класти CSV)</label>
+      <select class="form-select" name="pricelist_id">
+        <option value="">— не обрано —</option>
+        {% for p in pricelists %}
+          <option value="{{ p.id }}" {% if item and item.pricelist_id==p.id %}selected{% endif %}>[{{ p.id }}] {{ p.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+
+  <div class="row g-3 mt-1">
+    <div class="col-md-8">
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <strong>Стартові URL</strong>
+        </div>
+        <div class="card-body">
+          <textarea id="startUrls" class="form-control" rows="6">{{ start_urls_text or "" }}</textarea>
+          <div class="form-text">Кожен URL — з нового рядка. Звідси починаємо обхід (категорії/лістинги).</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card">
+        <div class="card-header"><strong>Налаштування</strong></div>
+        <div class="card-body">
+          <div class="mb-2">
+            <label class="form-label">User-Agent</label>
+            <input class="form-control" id="setUA" placeholder="(необовʼязково)">
+          </div>
+          <div class="mb-2">
+            <label class="form-label">Пауза між запитами, сек</label>
+            <input class="form-control" id="setDelay" type="number" step="0.1" min="0" value="0.2">
+          </div>
+          <div class="form-text">Selenium/авторизація/проксі — пізніше.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <ul class="nav nav-tabs mt-4" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabCategories" type="button" role="tab">Категорії</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabListing" type="button" role="tab">Лістинг</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabProduct" type="button" role="tab">Картка товару</button>
+    </li>
+  </ul>
+
+  <div class="tab-content border border-top-0 p-3">
+    <!-- CATEGORIES -->
+    <div class="tab-pane fade show active" id="tabCategories" role="tabpanel">
+      <div class="row g-3 align-items-end">
+        <div class="col-md-8">
+          <label class="form-label">URL для тесту — Категорії</label>
+          <input id="testUrlCat" class="form-control"
+                 value="{{ (settings.get('test_urls', {}).get('categories', '') if settings else '') }}">
+        </div>
+        {% if item %}
+        <div class="col-md-4">
+          <button class="btn btn-secondary w-100" type="button" id="btnTestCat"><i class="bi bi-search"></i> Перевірити</button>
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="row g-3 mt-1">
+        <div class="col-12 mb-2">
+          <div class="d-flex justify-content-between align-items-center">
+            <h6 class="mt-3 mb-2">Посилання на категорії</h6>
+            <button class="btn btn-sm btn-outline-primary" type="button" id="btnAddCatLink"><i class="bi bi-plus"></i></button>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle" id="tblCatLinks">
+              <thead>
+                <tr><th>Селектор</th><th class="text-center">XPath</th><th style="width:48px;"></th></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="col-12 mb-2">
+          <div class="d-flex justify-content-between align-items-center">
+            <h6 class="mt-3 mb-2">Пагінація</h6>
+            <button class="btn btn-sm btn-outline-primary" type="button" id="btnAddCatPag"><i class="bi bi-plus"></i></button>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle" id="tblCatPag">
+              <thead>
+                <tr><th>Селектор</th><th class="text-center">XPath</th><th style="width:48px;"></th></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- LISTING -->
+    <div class="tab-pane fade" id="tabListing" role="tabpanel">
+      <div class="row g-3 align-items-end">
+        <div class="col-md-8">
+          <label class="form-label">URL для тесту — Лістинг</label>
+          <input id="testUrlList" class="form-control"
+                 value="{{ (settings.get('test_urls', {}).get('listing', '') if settings else '') }}">
+        </div>
+        {% if item %}
+        <div class="col-md-4">
+          <button class="btn btn-secondary w-100" type="button" id="btnTestList"><i class="bi bi-search"></i> Перевірити</button>
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="row g-3 mt-1">
+        <div class="col-md-6">
+          <div class="d-flex justify-content-between align-items-center">
+            <h6 class="mt-3 mb-2">Посилання на товари</h6>
+            <button class="btn btn-sm btn-outline-primary" type="button" id="btnAddListProd"><i class="bi bi-plus"></i></button>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle" id="tblListProd">
+              <thead>
+                <tr><th>Селектор</th><th class="text-center">XPath</th><th style="width:48px;"></th></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="d-flex justify-content-between align-items-center">
+            <h6 class="mt-3 mb-2">Пагінація</h6>
+            <button class="btn btn-sm btn-outline-primary" type="button" id="btnAddListPag"><i class="bi bi-plus"></i></button>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle" id="tblListPag">
+              <thead>
+                <tr><th>Селектор</th><th class="text-center">XPath</th><th style="width:48px;"></th></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PRODUCT -->
+    <div class="tab-pane fade" id="tabProduct" role="tabpanel">
+      <div class="row g-3 align-items-end">
+        <div class="col-md-8">
+          <label class="form-label">URL для тесту — Картка</label>
+          <input id="testUrlProd" class="form-control"
+                 value="{{ (settings.get('test_urls', {}).get('product', '') if settings else '') }}">
+        </div>
+        {% if item %}
+        <div class="col-md-4">
+          <button class="btn btn-secondary w-100" type="button" id="btnTestProd"><i class="bi bi-search"></i> Перевірити</button>
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="d-flex justify-content-between align-items-center mt-2">
+        <h6 class="mb-2">Поля картки товару</h6>
+        <button class="btn btn-sm btn-outline-primary" type="button" id="btnAddField"><i class="bi bi-plus"></i></button>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-hover table-sm align-middle" id="tblFields">
+          <thead>
+            <tr class="text-center">
+              <th><small>Ключ</small></th>
+              <th><small>Селектор</small></th>
+              <th><small>XPath</small></th>
+              <th><small>Список</small></th>
+              <th><small>Розд.</small></th>
+              <th><small>Атрибут</small></th>
+              <th><small>Абс. URL</small></th>
+              <th><small>HTML</small></th>
+              <th class="text-center"><small>Внутр. HTML</small></th>
+              <th><small>Дозволені теги</small></th>
+              <th><small>Вид. лінки</small></th>
+              <th><small>Regex</small></th>
+              <th><small>Видалити</small></th>
+              <th><small>Знайти</small></th>
+              <th><small>Замінити</small></th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="form-text">Рекомендовано включити: <code>name</code>, <code>supplier_sku</code>, <code>price</code>, <code>currency</code>, <code>image_urls</code>.</div>
+
+      <div class="card mt-3">
+        <div class="card-header"><strong>Атрибути (таблиця характеристик)</strong></div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">Ключ поля (куди записати)</label>
+              <input class="form-control" id="attrKey" placeholder="attributes" value="attributes">
+              <div class="form-text">Значення буде JSON-рядком із пар «назва → значення».</div>
+            </div>
+          </div>
+
+          <div class="row g-3 mt-1">
+            <div class="col-md-6">
+              <label class="form-label">Блоки з атрибутами — селектор</label>
+              <div class="input-group">
+                <input class="form-control" id="attrContainerSel" placeholder="#projector_dictionary .dictionary__param">
+                <span class="input-group-text">
+                  <input class="form-check-input mt-0" type="checkbox" id="attrContainerXp" title="XPath?"> XPath
+                </span>
+              </div>
+              <div class="form-text">Селектор, що дає список блоків (кожен містить назву та значення).</div>
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label">Назва атрибута — селектор <small class="text-muted">(всередині блока)</small></label>
+              <div class="input-group">
+                <input class="form-control" id="attrNameSel" placeholder=".dictionary__name .dictionary__name_txt">
+                <span class="input-group-text">
+                  <input class="form-check-input mt-0" type="checkbox" id="attrNameXp" title="XPath?"> XPath
+                </span>
+              </div>
+              <div class="form-text">Зазвичай один елемент.</div>
+            </div>
+          </div>
+
+          <div class="row g-3 mt-1">
+            <div class="col-md-8">
+              <label class="form-label">Значення атрибута — селектор <small class="text-muted">(всередині блока)</small></label>
+              <div class="input-group">
+                <input class="form-control" id="attrValSel" placeholder=".dictionary__values .dictionary__value_txt">
+                <span class="input-group-text">
+                  <input class="form-check-input mt-0" type="checkbox" id="attrValXp" title="XPath?"> XPath
+                </span>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Розділювач для кількох значень</label>
+              <input class="form-control" id="attrValSep" placeholder=", " value=", ">
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Hidden JSON payloads -->
+  <input type="hidden" name="start_urls_json" id="start_urls_json">
+  <input type="hidden" name="settings_json" id="settings_json">
+  <input type="hidden" name="rules_json" id="rules_json">
+
+  <div class="mt-3 d-flex gap-2">
+    <button class="btn btn-primary" type="submit"><i class="bi bi-floppy"></i> Зберегти</button>
+    {% if item %}
+      <button class="btn btn-outline-success" type="button" id="btnRun"><i class="bi bi-cloud-download"></i> Зібрати → CSV</button>
+    {% endif %}
+    <a class="btn btn-secondary" href="/ui/scrapers"><i class="bi bi-arrow-return-left"></i> Назад</a>
+  </div>
+</form>
+
+{% if item %}
+<!-- Modal Preview -->
+<div class="modal fade" id="testModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">Перевірка</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <div class="row">
+          <div class="col-md-5"><pre id="testLeft" class="bg-light p-2" style="height:70vh;overflow:auto;"></pre></div>
+          <div class="col-md-7"><pre id="testRight" class="bg-light p-2" style="height:70vh;overflow:auto;"></pre></div>
+        </div>
+      </div>
+      <div class="modal-footer"><button class="btn btn-primary" data-bs-dismiss="modal">OK</button></div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="modal fade" id="runModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Парсинг — онлайн лог</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-2">
+          <div class="progress">
+            <div id="runProgress" class="progress-bar" role="progressbar" style="width: 0%">0%</div>
+          </div>
+          <div class="small text-muted mt-1" id="runStats"></div>
+        </div>
+        <pre id="runLog" class="bg-light p-2" style="height: 50vh; overflow: auto; white-space: pre-wrap;"></pre>
+      </div>
+      <div class="modal-footer">
+        <a id="runFileLink" href="#" target="_blank" class="btn btn-success d-none"><i class="bi bi-download"></i> Відкрити CSV</a>
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Закрити</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<template id="tplSelRow">
+  <tr>
+    <td><input class="form-control sel-selector" placeholder=".class a / //xpath"></td>
+    <td class="text-center"><input class="form-check-input sel-xpath" type="checkbox" title="XPath?"></td>
+    <td><button class="btn btn-outline-danger btn-sm btn-row-del" type="button" title="Видалити"><i class="bi bi-trash"></i></button></td>
+  </tr>
+</template>
+
+<template id="tplFieldRow">
+  <tr>
+    <td><input class="form-control f-key" placeholder="name / supplier_sku / price / ..."></td>
+    <td><input class="form-control f-selector" placeholder=".title / //h1"></td>
+    <td class="text-center"><input class="form-check-input f-xp" type="checkbox" title="XPath?"></td>
+    <td class="text-center"><input class="form-check-input f-list" type="checkbox" title="Зібрати всі?"></td>
+    <td><input class="form-control f-sep" placeholder=", " value=", "></td>
+    <td><input class="form-control f-attr" placeholder="href / src / data-src"></td>
+    <td class="text-center"><input class="form-check-input f-abs" type="checkbox" title="urljoin до базового"></td>
+    <td class="text-center"><input class="form-check-input f-html" type="checkbox" title="Зберегти HTML?"></td>
+    <td class="text-center"><input class="form-check-input f-inner" type="checkbox" title="Лише внутр. HTML?"></td>
+    <td><input class="form-control f-allowed" placeholder="p,br,ul,li"></td>
+    <td class="text-center"><input class="form-check-input f-rmlink" type="checkbox" title="Видалити <a>?"></td>
+    <td><input class="form-control f-regex" placeholder="регулярка"></td>
+    <td><input class="form-control f-del" placeholder="текст для видалення"></td>
+    <td><input class="form-control f-find" placeholder="знайти"></td>
+    <td><input class="form-control f-repl" placeholder="замінити на"></td>
+    <td><button class="btn btn-outline-danger btn-sm btn-row-del" type="button" title="Видалити"><i class="bi bi-trash"></i></button></td>
+  </tr>
+</template>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  // ---------- Prefill from backend ----------
+  const existingSettings = {{ (settings or {"user_agent":"", "delay":0.2}) | tojson | safe }};
+  const existingRules = {{ (rules or {
+    "categories":{"link_selectors":[], "pagination":[]},
+    "listing":{"product_link_selectors":[], "pagination":[]},
+    "product":{"fields":[]}
+  }) | tojson | safe }};
+
+  // ---------- DOM refs ----------
+  const form = document.getElementById('scraperForm');
+
+  const tplSel   = document.getElementById('tplSelRow');
+  const tplField = document.getElementById('tplFieldRow');
+
+  const tblCatLinks = document.querySelector('#tblCatLinks tbody');
+  const tblCatPag   = document.querySelector('#tblCatPag tbody');
+  const tblListProd = document.querySelector('#tblListProd tbody');
+  const tblListPag  = document.querySelector('#tblListPag tbody');
+  const tblFields   = document.querySelector('#tblFields tbody');
+
+  // ---------- Row builders ----------
+  function addSelRow(tbody, sel){
+    const node = tplSel.content.cloneNode(true);
+    node.querySelector('.sel-selector').value = (sel && sel.selector) || '';
+    node.querySelector('.sel-xpath').checked = !!(sel && sel.is_xpath);
+    node.querySelector('.btn-row-del').addEventListener('click', (e)=> e.currentTarget.closest('tr').remove());
+    tbody.appendChild(node);
+  }
+  function addFieldRow(f){
+    const node = tplField.content.cloneNode(true);
+    node.querySelector('.f-key').value      = (f && f.key) || '';
+    node.querySelector('.f-selector').value = (f && f.selector) || '';
+    node.querySelector('.f-xp').checked     = !!(f && f.is_xpath);
+    node.querySelector('.f-list').checked   = !!(f && f.as_list);
+    node.querySelector('.f-sep').value      = (f && f.sep) || ', ';
+    node.querySelector('.f-attr').value     = (f && f.attr) || '';
+    node.querySelector('.f-abs').checked    = !!(f && f.make_absolute);
+    node.querySelector('.f-html').checked   = !!(f && f.get_html);
+    node.querySelector('.f-inner').checked  = !!(f && f.inner_html);
+    node.querySelector('.f-allowed').value  = (f && f.allowed_tags) || '';
+    node.querySelector('.f-rmlink').checked = !!(f && f.remove_links);
+    node.querySelector('.f-regex').value    = (f && f.regex) || '';
+    node.querySelector('.f-del').value      = (f && f.delete_text) || '';
+    node.querySelector('.f-find').value     = (f && f.find) || '';
+    node.querySelector('.f-repl').value     = (f && f.replace) || '';
+    node.querySelector('.btn-row-del').addEventListener('click', (e)=> e.currentTarget.closest('tr').remove());
+    tblFields.appendChild(node);
+  }
+
+  // ---------- Prefill inputs ----------
+  document.getElementById('setUA').value = existingSettings.user_agent || '';
+  document.getElementById('setDelay').value = (existingSettings.delay ?? 0.2);
+
+  // Test URLs prefill
+  (function(){
+    const tst = existingSettings.test_urls || {};
+    const elCat  = document.getElementById('testUrlCat');
+    const elList = document.getElementById('testUrlList');
+    const elProd = document.getElementById('testUrlProd');
+    if (elCat)  elCat.value  = tst.categories || '';
+    if (elList) elList.value = tst.listing    || '';
+    if (elProd) elProd.value = tst.product    || '';
+  })();
+
+  (existingRules.categories?.link_selectors || []).forEach(x => addSelRow(tblCatLinks, x));
+  (existingRules.categories?.pagination || []).forEach(x => addSelRow(tblCatPag, x));
+  (existingRules.listing?.product_link_selectors || []).forEach(x => addSelRow(tblListProd, x));
+  (existingRules.listing?.pagination || []).forEach(x => addSelRow(tblListPag, x));
+  (existingRules.product?.fields || []).forEach(addFieldRow);
+
+  // Prefill ATTRIBUTES
+  (function(){
+    const exAttr = existingRules.product?.attributes || null;
+    if (!exAttr) return;
+    document.getElementById('attrKey').value = exAttr.key || 'attributes';
+    document.getElementById('attrContainerSel').value = exAttr.container?.selector || '';
+    document.getElementById('attrContainerXp').checked = !!(exAttr.container?.is_xpath);
+    document.getElementById('attrNameSel').value = exAttr.name?.selector || '';
+    document.getElementById('attrNameXp').checked = !!(exAttr.name?.is_xpath);
+    document.getElementById('attrValSel').value = exAttr.value?.selector || '';
+    document.getElementById('attrValXp').checked = !!(exAttr.value?.is_xpath);
+    document.getElementById('attrValSep').value = exAttr.value?.sep || ', ';
+  })();
+
+  // ---------- Add buttons ----------
+  document.getElementById('btnAddCatLink')?.addEventListener('click', ()=> addSelRow(tblCatLinks));
+  document.getElementById('btnAddCatPag')?.addEventListener('click', ()=> addSelRow(tblCatPag));
+  document.getElementById('btnAddListProd')?.addEventListener('click', ()=> addSelRow(tblListProd));
+  document.getElementById('btnAddListPag')?.addEventListener('click', ()=> addSelRow(tblListPag));
+  document.getElementById('btnAddField')?.addEventListener('click', ()=> addFieldRow({}));
+
+  // ---------- Collectors ----------
+  function collectSelectors(tbody){
+    const rows = [];
+    tbody.querySelectorAll('tr').forEach(tr=>{
+      const sel = tr.querySelector('.sel-selector')?.value.trim();
+      if(!sel) return;
+      rows.push({selector: sel, is_xpath: tr.querySelector('.sel-xpath')?.checked || false});
+    });
+    return rows;
+  }
+  function collectFields(){
+    const rows = [];
+    tblFields.querySelectorAll('tr').forEach(tr=>{
+      const key = tr.querySelector('.f-key')?.value.trim();
+      const sel = tr.querySelector('.f-selector')?.value.trim() || '';
+      if(!key) return;
+      rows.push({
+        key, selector: sel,
+        is_xpath: tr.querySelector('.f-xp')?.checked || false,
+        as_list: tr.querySelector('.f-list')?.checked || false,
+        sep: tr.querySelector('.f-sep')?.value ?? ', ',
+        attr: tr.querySelector('.f-attr')?.value || '',
+        make_absolute: tr.querySelector('.f-abs')?.checked || false,
+        get_html: tr.querySelector('.f-html')?.checked || false,
+        inner_html: tr.querySelector('.f-inner')?.checked || false,
+        allowed_tags: tr.querySelector('.f-allowed')?.value || '',
+        remove_links: tr.querySelector('.f-rmlink')?.checked || false,
+        regex: tr.querySelector('.f-regex')?.value || '',
+        delete_text: tr.querySelector('.f-del')?.value || '',
+        find: tr.querySelector('.f-find')?.value || '',
+        replace: tr.querySelector('.f-repl')?.value || ''
+      });
+    });
+    return rows;
+  }
+  function collectAttributes(){
+    const key = document.getElementById('attrKey')?.value.trim() || 'attributes';
+    const cSel = document.getElementById('attrContainerSel')?.value.trim() || '';
+    const cXp  = document.getElementById('attrContainerXp')?.checked || false;
+    const nSel = document.getElementById('attrNameSel')?.value.trim() || '';
+    const nXp  = document.getElementById('attrNameXp')?.checked || false;
+    const vSel = document.getElementById('attrValSel')?.value.trim() || '';
+    const vXp  = document.getElementById('attrValXp')?.checked || false;
+    const vSep = document.getElementById('attrValSep')?.value ?? ', ';
+    if (!cSel || !nSel || !vSel) return null;
+    return {
+      key,
+      container: { selector: cSel, is_xpath: cXp },
+      name:      { selector: nSel, is_xpath: nXp },
+      value:     { selector: vSel, is_xpath: vXp, sep: vSep }
+    };
+  }
+  function collectStartUrls() {
+    const ta = document.getElementById('startUrls');
+    const raw = (ta && ta.value) || '';
+    const lines = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    return lines;
+  }
+  function collectSettings() {
+    const ua    = document.getElementById('setUA')?.value?.trim() || '';
+    const delay = parseFloat(document.getElementById('setDelay')?.value || '0') || 0;
+    const testCat  = document.getElementById('testUrlCat')?.value?.trim()  || '';
+    const testList = document.getElementById('testUrlList')?.value?.trim() || '';
+    const testProd = document.getElementById('testUrlProd')?.value?.trim() || '';
+    return {
+      user_agent: ua,
+      delay: delay,
+      test_urls: { categories: testCat, listing: testList, product: testProd }
+    };
+  }
+  function collectRules() {
+    return {
+      categories: {
+        link_selectors: collectSelectors(tblCatLinks),
+        pagination:     collectSelectors(tblCatPag)
+      },
+      listing: {
+        product_link_selectors: collectSelectors(tblListProd),
+        pagination:             collectSelectors(tblListPag)
+      },
+      product: {
+        fields:     collectFields(),
+        attributes: collectAttributes()
+      }
+    };
+  }
+
+  // ---------- Submit: validate + fill hidden ----------
+  if (form) {
+    form.addEventListener('submit', function (e) {
+      const startUrls = collectStartUrls();
+      if (startUrls.length === 0) {
+        e.preventDefault();
+        alert('Вкажіть хоча б один стартовий URL у вкладці "Стартові URL".');
+        return;
+      }
+      const settings = collectSettings();
+      const rules    = collectRules();
+      document.getElementById('start_urls_json').value = JSON.stringify(startUrls);
+      document.getElementById('settings_json').value   = JSON.stringify(settings);
+      document.getElementById('rules_json').value      = JSON.stringify(rules);
+    });
+  }
+
+  // ---------- Test buttons ----------
+  async function testBlock(url, block){
+    if(!url){ alert('Вкажіть URL'); return; }
+    const fd = new FormData(); fd.append('url', url); fd.append('block', block);
+    const res = await fetch('/ui/scrapers/{{ item.id if item else 0 }}/test', {method:'POST', body: fd});
+    const data = await res.json();
+    if(!data.ok){ alert(data.message || 'Помилка'); return; }
+    const j = data.data || {};
+    document.getElementById('testLeft').textContent = JSON.stringify(j.items, null, 2);
+    document.getElementById('testRight').textContent = j.html || '';
+    const BS = window.bootstrap && window.bootstrap.Modal;
+    if (BS) new BS(document.getElementById('testModal')).show();
+  }
+  document.getElementById('btnTestCat')?.addEventListener('click', ()=> testBlock(document.getElementById('testUrlCat').value.trim(), 'categories'));
+  document.getElementById('btnTestList')?.addEventListener('click', ()=> testBlock(document.getElementById('testUrlList').value.trim(), 'listing'));
+  document.getElementById('btnTestProd')?.addEventListener('click', ()=> testBlock(document.getElementById('testUrlProd').value.trim(), 'product'));
+
+  // ---------- Run stream ----------
+  {% if item %}
+  const btnRun = document.getElementById('btnRun');
+  const runModalEl = document.getElementById('runModal');
+  const BSModal = window.bootstrap && window.bootstrap.Modal;
+  const runModal = BSModal ? new BSModal(runModalEl) : null;
+  const runLog = document.getElementById('runLog');
+  const runProgress = document.getElementById('runProgress');
+  const runStats = document.getElementById('runStats');
+  const runFileLink = document.getElementById('runFileLink');
+
+  function appendLog(line) { runLog.textContent += line + "\n"; runLog.scrollTop = runLog.scrollHeight; }
+  function setProgress(done, total) {
+    if (!total || total <= 0) { runProgress.style.width = '0%'; runProgress.textContent = '0%'; return; }
+    const pct = Math.min(100, Math.round((done / total) * 100));
+    runProgress.style.width = pct + '%'; runProgress.textContent = pct + '%';
+  }
+
+  btnRun?.addEventListener('click', function(){
+    this.disabled = true;
+    const icon = this.querySelector('i'); if(icon) icon.className = 'bi bi-arrow-repeat';
+    runLog.textContent = ''; runStats.textContent = ''; runFileLink.classList.add('d-none');
+    setProgress(0, 100);
+    if (runModal) runModal.show();
+
+    const es = new EventSource('/ui/scrapers/{{ item.id }}/run-stream');
+
+    es.onmessage = (ev) => {
+      try {
+        const data = JSON.parse(ev.data);
+        if (data.type === 'log') {
+          appendLog(data.message);
+        } else if (data.type === 'progress') {
+          if (data.phase === 'crawl') {
+            runStats.textContent = `Сторінок опрацьовано: ${data.pages_done} • У черзі: ${data.queue} • Товарів знайдено: ${data.products}`;
+          } else if (data.phase === 'products') {
+            setProgress(data.done, data.total);
+            runStats.textContent = `Карток: ${data.done} з ${data.total}`;
+          }
+        } else if (data.type === 'done') {
+          appendLog(`Готово. Товарів: ${data.stats.products}, сторінок: ${data.stats.pages}`);
+          if (data.file_url) { runFileLink.href = data.file_url; runFileLink.classList.remove('d-none'); }
+          es.close(); btnRun.disabled = false; if(icon) icon.className = 'bi bi-cloud-download';
+        } else if (data.type === 'error') {
+          appendLog('ПОМИЛКА: ' + data.message);
+        }
+      } catch (e) {
+        appendLog('ПОМИЛКА парсингу повідомлення: ' + (e.message || e));
+      }
+    };
+
+    es.onerror = () => {
+      appendLog('Зʼєднання перервано.');
+      es.close();
+      btnRun.disabled = false; const icon2 = btnRun.querySelector('i'); if(icon2) icon2.className = 'bi bi-cloud-download';
+    };
+  });
+  {% endif %}
+})();
+</script>
+{% endblock %}
