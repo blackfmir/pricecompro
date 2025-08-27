@@ -1,0 +1,26 @@
+{% extends "layout.html" %}
+{% block content %}
+<h2>Парсери</h2>
+<p><a class="btn btn-primary" href="/ui/scrapers/new"><i class="bi bi-plus"></i> Новий парсер</a></p>
+<table class="table table-sm">
+  <thead>
+    <tr>
+      <th>ID</th><th>Постачальник</th><th>Назва</th><th>Pricelist</th><th>Активний</th><th></th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for s in items %}
+    <tr>
+      <th scope="row">{{ s.id }}</th>
+      <td>{{ suppliers.get(s.supplier_id, s.supplier_id) }}</td>
+      <td>{{ s.name }}</td>
+      <td>{{ pricelists.get(s.pricelist_id, s.pricelist_id) if s.pricelist_id else "" }}</td>
+      <td>{{ "так" if s.active else "ні" }}</td>
+      <td>
+        <a class="btn btn-secondary btn-sm" href="/ui/scrapers/{{ s.id }}/edit" title="Редагувати"><i class="bi bi-pencil-square"></i></a>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

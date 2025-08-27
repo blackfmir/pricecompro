@@ -260,7 +260,6 @@ def to_supplier_products(rows: list[dict]) -> list[dict]:
         })
     return out
 
-
 REQUIRED_FIELDS = ("supplier_sku", "name", "price_raw")
 
 def split_valid_invalid(sp_rows: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:

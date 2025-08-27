@@ -39,7 +39,7 @@ def upsert_many(
     if not items:
         return {"inserted": 0, "updated": 0}
 
-    extra_json = json.dumps(it.get("extra") or {}, ensure_ascii=False)
+    
 
     skus = [str(i.get("supplier_sku", "")).strip() for i in items if i.get("supplier_sku")]
     existing = {}
@@ -53,6 +53,8 @@ def upsert_many(
         sku = str(it.get("supplier_sku", "")).strip()
         name = str(it.get("name", "")).strip()
         price_raw = it.get("price_raw", None)
+
+        extra_json = json.dumps(it.get("extra") or {}, ensure_ascii=False)
         
         if not sku or not name or price_raw is None:
             continue

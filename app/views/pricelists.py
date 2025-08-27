@@ -1,10 +1,9 @@
 import json
 from urllib.parse import quote
-from pathlib import Path
 from datetime import datetime
-from io import StringIO   # ← ДОДАТИ
-import csv 
+from app.utils.storage import save_upload
 from typing import List
+import sys
 
 from fastapi import APIRouter, Depends, Request, Form, UploadFile, File
 
@@ -18,6 +17,7 @@ from app.crud import pricelists as crud
 from app.crud import supplier as supplier_crud
 from app.crud import supplier_product as sp_crud
 from app.crud import custom_field as cf_crud
+from app.crud import import_batch as ib_crud
 
 from app.schemas.pricelists import PricelistCreate, PricelistUpdate
 
@@ -27,7 +27,6 @@ from app.services.importer import preview_from_file, to_supplier_products
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
-
 
 @router.get("/ui/pricelists")
 def ui_pricelists(request: Request, db: Session = Depends(get_db)):
@@ -221,76 +220,145 @@ def ui_pricelist_import(pr_id: int, db: Session = Depends(get_db)):
 
 @router.post("/ui/pricelists/{pr_id}/import-ajax")
 def ui_pricelist_import_ajax(pr_id: int, db: Session = Depends(get_db)):
-    item = crud.get(db, pr_id)
+    # Локальні імпорти, щоб не ламати існуючу структуру модуля
+    from pathlib import Path
+    from io import StringIO
+    from datetime import datetime
+    import json as _json
+    import csv
+
+    from fastapi.responses import JSONResponse
+
+    from app.utils.storage import storage_join, save_upload
+    from app.services.importer import preview_from_file, to_supplier_products, split_valid_invalid
+    from app.crud import supplier_product as sp_crud
+    from app.crud import pricelists as pricelist_crud
+
+    # Історія імпорту (батч) — опційно: якщо модуль є, використаємо; якщо ні — пропустимо
+    try:
+        from app.crud import import_batch as ib_crud  # type: ignore
+    except Exception:
+        ib_crud = None  # noqa: N816
+
+    # 0) Отримуємо прайс-лист
+    item = pricelist_crud.get(db, pr_id)
     if not item:
         return JSONResponse({"ok": False, "message": "Прайс-лист не знайдено"}, status_code=404)
 
-    # 1) зчитуємо останній файл
+    # 1) Джерело файлу (останній завантажений у сховище)
     try:
-        src_cfg = json.loads(item.source_config) if item.source_config else {}
+        src_cfg = _json.loads(item.source_config) if item.source_config else {}
     except Exception:
         src_cfg = {}
     last_path = src_cfg.get("last_path")
     if not last_path:
-        return JSONResponse({"ok": False, "message": "Спочатку завантажте файл"}, status_code=400)
+        return JSONResponse({"ok": False, "message": "Спочатку завантажте файл у сховище"}, status_code=400)
 
-    fp = storage_join(last_path)
-    p = Path(fp)
+    file_path = storage_join(last_path)
+    p = Path(file_path)
     if not p.exists():
         return JSONResponse({"ok": False, "message": "Файл не знайдено у сховищі"}, status_code=400)
 
     data = p.read_bytes()
 
-    # 2) мапінг + опції
+    # 2) Мапінг + опції читання
     try:
-        mapping = json.loads(item.mapping) if item.mapping else {"fields": {}, "options": {}}
+        mapping = _json.loads(item.mapping) if item.mapping else {"fields": {}, "options": {}}
     except Exception:
         mapping = {"fields": {}, "options": {}}
     options = mapping.get("options", {})
 
-    # 3) парсимо всі рядки
-    rows, errors = preview_from_file(data=data, fmt=item.format, mapping=mapping, source_config=options, limit=200000)
-    items_norm = to_supplier_products(rows)
+    # 3) Стартуємо лог батча (якщо CRUD існує)
+    batch = None
+    if ib_crud:
+        batch = ib_crud.create(db, {
+            "supplier_id": item.supplier_id,
+            "pricelist_id": item.id,
+            "source_path": last_path,
+            "format": item.format,
+            "ok": False,
+            "message": "processing",
+            "inserted": 0,
+            "updated": 0,
+            "skipped": 0,
+            "warnings": 0,
+            "mapping_json": item.mapping or None,
+        })
 
-    # 4) валідація обов'язкових полів
-    from app.services.importer import split_valid_invalid  # локальний імпорт, щоб уникнути циклів
-    valid_items, invalid_rows = split_valid_invalid(items_norm)
+    # 4) Парсимо файл → нормалізуємо у формат supplier_products
+    try:
+        rows, errors = preview_from_file(
+            data=data,
+            fmt=item.format,
+            mapping=mapping,
+            source_config=options,
+            limit=200_000,
+        )
+        items_norm = to_supplier_products(rows)
 
-    # 5) upsert у БД лише валідних
-    stats = sp_crud.upsert_many(
-        db,
-        supplier_id=item.supplier_id,
-        pricelist_id=item.id,
-        items=valid_items,                                          # ← ВАЖЛИВО
-    )
+        # 5) Перевірка обов'язкових полів
+        valid_items, invalid_rows = split_valid_invalid(items_norm)
 
-    # 6) якщо є невалідні — формуємо CSV і кладемо у сховище
-    errors_url = None
-    if invalid_rows:
-        buf = StringIO()
-        fieldnames = ["__reason","supplier_sku","name","price","price_raw","currency_raw","availability_raw","manufacturer_raw","category_raw"]
-        writer = csv.DictWriter(buf, fieldnames=fieldnames, extrasaction="ignore")
-        writer.writeheader()
-        for r in invalid_rows:
-            # додамо оригінальне price (якщо було)
-            if "price" not in r and "price_raw" in r:
-                r["price"] = r.get("price_raw")
-            writer.writerow(r)
-        csv_bytes = buf.getvalue().encode("utf-8-sig")
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        rel, url = save_upload(f"pricelists/{item.id}/logs", f"errors_{item.id}_{ts}.csv", csv_bytes)
-        errors_url = url
+        # 6) Запис у БД лише валідних
+        stats = sp_crud.upsert_many(
+            db,
+            supplier_id=item.supplier_id,
+            pricelist_id=item.id,
+            items=valid_items,
+        )
 
-    return JSONResponse({
-        "ok": True,
-        "inserted": stats.get("inserted", 0),
-        "updated": stats.get("updated", 0),
-        "warnings": len(errors),
-        "skipped": len(invalid_rows),
-        "errors_url": errors_url,
-        "message": f"Імпорт виконано для прайс-листа #{item.id}",
-        "pricelist_id": item.id,
-    })
+        # 7) CSV із причинами відкидання рядків (якщо є)
+        errors_url = None
+        if invalid_rows:
+            buf = StringIO()
+            fieldnames = [
+                "__reason",
+                "supplier_sku", "name",
+                "price", "price_raw", "currency_raw",
+                "availability_raw", "manufacturer_raw", "category_raw",
+            ]
+            writer = csv.DictWriter(buf, fieldnames=fieldnames, extrasaction="ignore")
+            writer.writeheader()
+            for r in invalid_rows:
+                if "price" not in r and "price_raw" in r:
+                    r["price"] = r.get("price_raw")
+                writer.writerow(r)
+            csv_bytes = buf.getvalue().encode("utf-8-sig")
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            _, errors_url = save_upload(f"pricelists/{item.id}/logs", f"errors_{item.id}_{ts}.csv", csv_bytes)
+
+        # 8) Оновлюємо батч (успішно)
+        if ib_crud and batch:
+            ib_crud.update(db, batch.id, {
+                "ok": True,
+                "message": f"ok: ins={stats.get('inserted', 0)}, upd={stats.get('updated', 0)}, "
+                           f"warn={len(errors)}, skip={len(invalid_rows)}",
+                "inserted": stats.get("inserted", 0),
+                "updated": stats.get("updated", 0),
+                "skipped": len(invalid_rows),
+                "warnings": len(errors),
+                "errors_url": errors_url,
+            })
+
+        # 9) Відповідь для модалки
+        return JSONResponse({
+            "ok": True,
+            "inserted": stats.get("inserted", 0),
+            "updated": stats.get("updated", 0),
+            "warnings": len(errors),
+            "skipped": len(invalid_rows),
+            "errors_url": errors_url,
+            "message": f"Імпорт виконано для прайс-листа #{item.id}",
+            "pricelist_id": item.id,
+            "batch_id": batch.id if batch else None,
+        })
+
+    except Exception as e:
+        # Якщо щось пішло не так — оновимо батч і повернемо JSON-помилку
+        if ib_crud and batch:
+            ib_crud.update(db, batch.id, {"ok": False, "message": f"error: {e}"})
+        return JSONResponse({"ok": False, "message": f"Помилка імпорту: {e}"}, status_code=500)
+
 
 
 @router.get("/ui/pricelists/{pr_id}/upload")

@@ -1,0 +1,75 @@
+{% extends "layout.html" %}
+{% block content %}
+<h2>Історія імпортів</h2>
+
+<form class="row gy-2 gx-2 align-items-end mb-3" method="get">
+  <div class="col-md-4">
+    <label class="form-label">Постачальник</label>
+    <select class="form-select" name="supplier_id">
+      <option value="">— всі —</option>
+      {% for sid, sname in suppliers.items() %}
+        <option value="{{ sid }}" {% if supplier_id == sid %}selected{% endif %}>[{{ sid }}] {{ sname }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-4">
+    <label class="form-label">Прайс-лист</label>
+    <select class="form-select" name="pricelist_id">
+      <option value="">— всі —</option>
+      {% for pid, pname in pricelists.items() %}
+        <option value="{{ pid }}" {% if pricelist_id == pid %}selected{% endif %}>[{{ pid }}] {{ pname }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-2">
+    <button class="btn btn-primary w-100" type="submit"><i class="bi bi-search"></i></button>
+  </div>
+</form>
+
+<table class="table table-sm">
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Дата</th>
+      <th>Постачальник</th>
+      <th>Прайс</th>
+      <th>Формат</th>
+      <th>Inserted</th>
+      <th>Updated</th>
+      <th>Skipped</th>
+      <th>Warnings</th>
+      <th>OK</th>
+      <th>Логи</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for b in items %}
+      <tr>
+        <th scope="row">{{ b.id }}</th>
+        <td>{{ b.started_at }}</td>
+        <td>{{ suppliers.get(b.supplier_id, b.supplier_id) }}</td>
+        <td>{{ pricelists.get(b.pricelist_id, b.pricelist_id) }}</td>
+        <td>{{ b.format or '' }}</td>
+        <td>{{ b.inserted }}</td>
+        <td>{{ b.updated }}</td>
+        <td>{{ b.skipped }}</td>
+        <td>{{ b.warnings }}</td>
+        <td>
+          {% if b.ok %}
+            <span class="badge text-bg-success">ok</span>
+          {% else %}
+            <span class="badge text-bg-danger">fail</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if b.errors_url %}
+            <a class="btn btn-outline-secondary btn-sm" href="{{ b.errors_url }}" target="_blank" rel="noopener">
+              <i class="bi bi-filetype-csv"></i> CSV
+            </a>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

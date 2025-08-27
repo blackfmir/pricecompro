@@ -84,7 +84,7 @@
             {% for cf in custom_fields %}
               <option value="{{ cf.code }}">[custom] {{ cf.name }} ({{ cf.code }})</option>
             {% endfor %}
-            <option value="__add__">➕ Додати нове поле…</option>
+            <option value="__add__">+ Додати нове поле…</option>
           </select>
         </div>
         <div class="col-md-3">
@@ -213,9 +213,7 @@
   </div>
 </form>
 
-<script>
-  const existingExtra = {{ (mapping.extra or []) | tojson | safe }};
-</script>
+
 
 <!-- Модалка створення користувацького поля -->
 <div class="modal fade" id="addFieldModal" tabindex="-1" aria-hidden="true">
@@ -253,6 +251,8 @@
 </div>
 
 <script>
+  const existingExtra = {{ (mapping.extra or []) | tojson | safe }};
+
 (function(){
   const rows = document.getElementById('extraRows');
   const tpl = document.getElementById('tplExtraRow');
@@ -262,8 +262,8 @@
     const node = tpl.content.cloneNode(true);
     const rowEl = node.querySelector('.extra-row');
     const keyEl = node.querySelector('.extra-key');
-    const typeEl = node.querySelector('select[name="extra_type[]"]');
-    const valEl = node.querySelector('input[name="extra_value[]"]');
+    const typeEl = node.querySelector('select[name="extra_type"]');
+    const valEl  = node.querySelector('input[name="extra_value"]');
 
     if (prefill) {
       // проставимо значення

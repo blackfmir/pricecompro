@@ -1,0 +1,736 @@
+{% extends "layout.html" %}
+{% block content %}
+<h2>{{ "Редагування парсера" if item else "Новий парсер" }}</h2>
+
+{% if request.query_params.get('err') %}
+  <div class="alert alert-danger">{{ request.query_params.get('err') }}</div>
+{% endif %}
+{% if request.query_params.get('msg') %}
+  <div class="alert alert-success">{{ request.query_params.get('msg') }}</div>
+{% endif %}
+
+<form method="post" action="{{ '/ui/scrapers/new' if not item else '/ui/scrapers/' ~ item.id ~ '/save-rules' }}" id="scraperForm">
+
+  <!-- ЗАГАЛЬНІ (added) -->
+  <div class="card mb-3">
+    <div class="card-header"><strong>Загальні</strong></div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Назва парсера</label>
+          <input name="name" class="form-control"
+                 value="{{ item.name if item else '' }}"
+                 {{ '' if item else 'required' }}>
+          <div class="form-text">Будь-яка зручна назва (лише при створенні обов’язкова).</div>
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label">Постачальник</label>
+          <select name="supplier_id" class="form-select" {{ 'disabled' if item else 'required' }}>
+            <option value="" disabled {{ 'selected' if not item }}>— оберіть —</option>
+            {% for s in suppliers %}
+              <option value="{{ s.id }}"
+                {% if item and item.supplier_id == s.id %}selected{% endif %}>{{ s.name }}</option>
+            {% endfor %}
+          </select>
+          <div class="form-text">Прив’язка обов’язкова на етапі створення.</div>
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label">Прайслист</label>
+          <select name="pricelist_id" class="form-select">
+            <option value="" {% if not item or not item.pricelist_id %}selected{% endif %}>— без прив’язки —</option>
+            {% for p in pricelists %}
+              <option value="{{ p.id }}"
+                {% if item and item.pricelist_id == p.id %}selected{% endif %}>
+                {{ p.name }}
+              </option>
+            {% endfor %}
+          </select>
+          <div class="form-text">Результат парсингу можна одразу експортувати у цей прайслист.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- /ЗАГАЛЬНІ -->
+
+  <!-- Основні налаштування -->
+  <div class="card mb-3">
+    <div class="card-header"><strong>Основні налаштування парсера</strong></div>
+    <div class="card-body">
+      <div class="row g-3">
+        <!-- User-Agent -->
+        <div class="col-md-4">
+          <label class="form-label d-block">User-Agent</label>
+          <div class="form-check">
+            <input class="form-check-input" type="radio" name="uaMode" id="uaDefault" value="default">
+            <label class="form-check-label" for="uaDefault">Використовувати за замовчуванням <code>PriceComProBot</code></label>
+          </div>
+          <div class="form-check mt-1">
+            <input class="form-check-input" type="radio" name="uaMode" id="uaCustom" value="custom">
+            <label class="form-check-label" for="uaCustom">Вказати свій</label>
+          </div>
+          <input class="form-control mt-1" id="uaCustomVal" placeholder="Mozilla/5.0 ...">
+          <div class="form-check mt-2">
+            <input class="form-check-input" type="radio" name="uaMode" id="uaFake" value="fake">
+            <label class="form-check-label" for="uaFake">Використати FakeAgent</label>
+          </div>
+          <div class="form-text">FakeAgent згенеруємо локально (без зовнішніх залежностей).</div>
+        </div>
+
+        <!-- Delay / Threads -->
+        <div class="col-md-4">
+          <label class="form-label">Пауза між запитами (сек)</label>
+          <input class="form-control" id="delay" type="number" min="0" max="999" step="0.1" value="0.2">
+          <div class="form-text">0 … 999</div>
+
+          <label class="form-label mt-3">Кількість потоків</label>
+          <input class="form-control" id="threads" type="number" min="0" max="99" step="1" value="0">
+          <div class="form-text">0 = авто (до кількості ядер CPU)</div>
+        </div>
+
+        <!-- Mode / JSON Toggle -->
+        <div class="col-md-4">
+          <label class="form-label d-block">Режим збору інформації</label>
+          <div class="btn-group" role="group">
+            <input type="radio" class="btn-check" name="mode" id="modeCategories" autocomplete="off" value="categories">
+            <label class="btn btn-outline-primary" for="modeCategories">Категорії</label>
+
+            <input type="radio" class="btn-check" name="mode" id="modeCards" autocomplete="off" value="cards">
+            <label class="btn btn-outline-primary" for="modeCards">Картки товарів</label>
+          </div>
+
+          <div class="form-check form-switch mt-3">
+            <input class="form-check-input" type="checkbox" id="jsonEnabled">
+            <label class="form-check-label" for="jsonEnabled">Шукати JSON списки</label>
+          </div>
+
+          <div class="mt-3 text-muted">
+            Proxy/Авторизація — додамо пізніше.
+          </div>
+        </div>
+      </div>
+
+      <!-- Start URLs -->
+      <div class="row g-3 mt-3">
+        <div class="col-12">
+          <label class="form-label">Початкові посилання</label>
+          <textarea id="startUrls" class="form-control" rows="6">{{ start_urls_text or "" }}</textarea>
+          <div class="form-text">Кожен URL — з нового рядка. Звідси починається обхід.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Пошук та збереження інформації -->
+  <div class="card mb-3">
+    <div class="card-header"><strong>Пошук та збереження інформації</strong></div>
+    <div class="card-body">
+      <ul class="nav nav-tabs" role="tablist">
+        <li class="nav-item" role="presentation">
+          <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabNav" type="button" role="tab">Навігація / Категорія</button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabProduct" type="button" role="tab">Картка товарів</button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabJson" type="button" role="tab">Інформація з JSON</button>
+        </li>
+      </ul>
+
+      <div class="tab-content border border-top-0 p-3">
+        <!-- NAV -->
+        <div class="tab-pane fade show active" id="tabNav" role="tabpanel">
+          <div class="row g-3 align-items-end">
+            <div class="col-md-8">
+              <label class="form-label">URL для тестування</label>
+              <input id="testUrlNav" class="form-control"
+                     value="{{ (settings.get('test_urls', {}).get('categories', '') if settings else '') or (settings.get('test_urls', {}).get('listing', '') if settings else '') }}">
+            </div>
+            {% if item %}
+            <div class="col-md-4 d-grid">
+              <button class="btn btn-secondary" type="button" id="btnTestNav"><i class="bi bi-search"></i> Перевірити</button>
+            </div>
+            {% endif %}
+          </div>
+
+          <div class="row g-3 mt-2">
+            <div class="col-md-6">
+              <div class="d-flex justify-content-between align-items-center">
+                <h6 class="mb-2">Посилання на категорії</h6>
+                <button class="btn btn-sm btn-outline-primary" type="button" id="btnAddCatLink"><i class="bi bi-plus"></i></button>
+              </div>
+              <table class="table table-sm align-middle">
+                <thead><tr><th>Селектор</th><th class="text-center">Тип</th><th style="width:48px;"></th></tr></thead>
+                <tbody id="tblCatLinks"></tbody>
+              </table>
+            </div>
+
+            <div class="col-md-6">
+              <div class="d-flex justify-content-between align-items-center">
+                <h6 class="mb-2">Пагінація (наступна сторінка)</h6>
+                <button class="btn btn-sm btn-outline-primary" type="button" id="btnAddPagination"><i class="bi bi-plus"></i></button>
+              </div>
+              <table class="table table-sm align-middle">
+                <thead><tr><th>Селектор</th><th class="text-center">Тип</th><th style="width:48px;"></th></tr></thead>
+                <tbody id="tblPagination"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="row g-3 mt-2">
+            <div class="col-md-12">
+              <div class="d-flex justify-content-between align-items-center">
+                <h6 class="mb-2">Посилання на товари (використовується у режимі «Картки»)</h6>
+                <button class="btn btn-sm btn-outline-primary" type="button" id="btnAddProdLinks"><i class="bi bi-plus"></i></button>
+              </div>
+              <table class="table table-sm align-middle">
+                <thead><tr><th>Селектор</th><th class="text-center">Тип</th><th style="width:48px;"></th></tr></thead>
+                <tbody id="tblProdLinks"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="row g-3 mt-2">
+            <div class="col-md-12">
+              <label class="form-label">Тег товарів (для режиму «Категорії»)</label>
+              <div class="row g-2">
+                <div class="col-md-9"><input class="form-control" id="prodItemSelector" placeholder=".product-card"></div>
+                <div class="col-md-3">
+                  <select class="form-select" id="prodItemType">
+                    <option value="css">CSS</option>
+                    <option value="xpath">XPATH</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-text">Кожен знайдений елемент вважатиметься «одним товаром» у режимі «Категорії».</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- PRODUCT -->
+        <div class="tab-pane fade" id="tabProduct" role="tabpanel">
+          <div class="row g-3 align-items-end">
+            <div class="col-md-8">
+              <label class="form-label">URL для тесту картки</label>
+              <input id="testUrlProd" class="form-control"
+                     value="{{ (settings.get('test_urls', {}).get('product', '') if settings else '') }}">
+            </div>
+            {% if item %}
+            <div class="col-md-4 d-grid">
+              <button class="btn btn-secondary" type="button" id="btnTestProd"><i class="bi bi-search"></i> Перевірити</button>
+            </div>
+            {% endif %}
+          </div>
+
+          <div class="d-flex justify-content-between align-items-center mt-2">
+            <h6 class="mb-2">Основні селектори</h6>
+            <button class="btn btn-sm btn-outline-primary" type="button" id="btnAddField"><i class="bi bi-plus"></i></button>
+          </div>
+          <table class="table table-hover table-sm align-middle">
+            <thead>
+              <tr class="text-center">
+                <th>#</th>
+                <th>Export</th>
+                <th>Назва поля</th>
+                <th style="width:140px;">Тип</th>
+                <th>Селектор / RegEx</th>
+                <th style="width:140px;">Налаштування</th>
+                <th style="width:48px;"></th>
+              </tr>
+            </thead>
+            <tbody id="tblFields"></tbody>
+          </table>
+          <div class="form-text">Рекомендовані ключі: <code>name</code>, <code>supplier_sku</code>, <code>price</code>, <code>currency</code>, <code>image_urls</code>.</div>
+        </div>
+
+        <!-- JSON -->
+        <div class="tab-pane fade" id="tabJson" role="tabpanel">
+          <div class="alert alert-info">
+            <strong>Пояснення:</strong> якщо увімкнено «Шукати JSON списки» і режим «Картки», тоді після основних селекторів
+            буде спроба конвертувати вміст *обраних базових полів* (за їх порядковими номерами) у JSON-масиви та об’єднати їх.
+            Далі «Додаткові поля товару» зчитуються з об’єднаного масиву.
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label">Поля з JSON (порядкові № із «Основних селекторів», через кому)</label>
+            <input class="form-control" id="jsonFromOrders" placeholder="2, 5">
+          </div>
+
+          <div class="d-flex justify-content-between align-items-center mt-3">
+            <h6 class="mb-2">Додаткові поля товару (з JSON)</h6>
+            <button class="btn btn-sm btn-outline-primary" type="button" id="btnAddJsonField"><i class="bi bi-plus"></i></button>
+          </div>
+          <table class="table table-sm align-middle">
+            <thead>
+              <tr class="text-center">
+                <th>Export</th>
+                <th>Назва поля</th>
+                <th style="width:140px;">№ JSON-поля</th>
+                <th>Селектор у JSON (ключ/індекс/шлях)</th>
+                <th style="width:140px;">Налашт.</th>
+                <th style="width:48px;"></th>
+              </tr>
+            </thead>
+            <tbody id="tblJsonFields"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- hidden payloads -->
+  <input type="hidden" name="start_urls_json" id="start_urls_json">
+  <input type="hidden" name="settings_json" id="settings_json">
+  <input type="hidden" name="rules_json" id="rules_json">
+
+  <div class="mt-3 d-flex gap-2">
+    <button class="btn btn-primary" type="submit"><i class="bi bi-floppy"></i> Зберегти</button>
+    {% if item %}
+      <button class="btn btn-outline-success" type="button" id="btnRun"><i class="bi bi-cloud-download"></i> Зібрати → CSV</button>
+      <a class="btn btn-secondary" href="/ui/scrapers"><i class="bi bi-arrow-return-left"></i> Назад</a>
+    {% else %}
+      <a class="btn btn-secondary" href="/ui/scrapers"><i class="bi bi-arrow-return-left"></i> Назад</a>
+    {% endif %}
+  </div>
+</form>
+
+{% if item %}
+<!-- Test modal -->
+<div class="modal fade" id="testModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">Перевірка</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <div class="row">
+          <div class="col-md-5"><pre id="testLeft" class="bg-light p-2" style="height:70vh;overflow:auto;"></pre></div>
+          <div class="col-md-7"><pre id="testRight" class="bg-light p-2" style="height:70vh;overflow:auto;"></pre></div>
+        </div>
+      </div>
+      <div class="modal-footer"><button class="btn btn-primary" data-bs-dismiss="modal">OK</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- Run modal -->
+<div class="modal fade" id="runModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">Парсинг — онлайн лог</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <div class="mb-2">
+          <div class="progress"><div id="runProgress" class="progress-bar" role="progressbar" style="width:0%">0%</div></div>
+          <div class="small text-muted mt-1" id="runStats"></div>
+        </div>
+        <pre id="runLog" class="bg-light p-2" style="height: 50vh; overflow: auto; white-space: pre-wrap;"></pre>
+      </div>
+      <div class="modal-footer">
+        <a id="runFileLink" href="#" target="_blank" class="btn btn-success d-none"><i class="bi bi-download"></i> Відкрити CSV</a>
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Закрити</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- row templates -->
+<template id="tplSelRow">
+  <tr>
+    <td><input class="form-control sel-selector" placeholder=".nav a / //xpath"></td>
+    <td class="text-center">
+      <select class="form-select form-select-sm sel-type">
+        <option value="css">CSS</option>
+        <option value="xpath">XPATH</option>
+      </select>
+    </td>
+    <td><button class="btn btn-outline-danger btn-sm btn-row-del" type="button"><i class="bi bi-trash"></i></button></td>
+  </tr>
+</template>
+
+<template id="tplFieldRow">
+  <tr>
+    <td class="text-center"><input class="form-control form-control-sm f-order" type="number" min="1" step="1" style="width:72px"></td>
+    <td class="text-center"><input class="form-check-input f-export" type="checkbox" checked></td>
+    <td><input class="form-control f-key" placeholder="name / supplier_sku / price"></td>
+    <td>
+      <select class="form-select form-select-sm f-type">
+        <option value="css">CSS</option>
+        <option value="xpath">XPath</option>
+        <option value="regex">RegEx</option>
+      </select>
+    </td>
+    <td><input class="form-control f-selector" placeholder=".title / //h1 / ^SKU:(.*)$"></td>
+    <td class="text-center">
+      <button class="btn btn-outline-secondary btn-sm f-settings" type="button"><i class="bi bi-gear"></i> Опції</button>
+      <input type="hidden" class="f-opts" value="{}">
+    </td>
+    <td class="text-center"><button class="btn btn-outline-danger btn-sm btn-row-del" type="button"><i class="bi bi-trash"></i></button></td>
+  </tr>
+</template>
+
+<template id="tplJsonFieldRow">
+  <tr>
+    <td class="text-center"><input class="form-check-input jf-export" type="checkbox" checked></td>
+    <td><input class="form-control jf-key" placeholder="brand / availability ..."></td>
+    <td><input class="form-control jf-order" type="number" min="1" step="1" placeholder="1"></td>
+    <td><input class="form-control jf-selector" placeholder="offers/0/price | name"></td>
+    <td class="text-center">
+      <button class="btn btn-outline-secondary btn-sm jf-settings" type="button"><i class="bi bi-gear"></i></button>
+      <input type="hidden" class="jf-opts" value="{}">
+    </td>
+    <td class="text-center"><button class="btn btn-outline-danger btn-sm btn-row-del" type="button"><i class="bi bi-trash"></i></button></td>
+  </tr>
+</template>
+
+<!-- Field settings modal (спільний для базових і JSON-полів) -->
+<div class="modal fade" id="fieldSettingsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">Налаштування поля</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="checkbox" id="fsAsList"><label class="form-check-label" for="fsAsList">Список (об’єднати)</label></div></div>
+          <div class="col-md-3"><label class="form-label">Розділювач</label><input class="form-control" id="fsSep" value=", "></div>
+          <div class="col-md-3"><label class="form-label">Атрибут</label><input class="form-control" id="fsAttr" placeholder="href / src / data-src"></div>
+          <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="checkbox" id="fsAbs"><label class="form-check-label" for="fsAbs">Абсолютний URL</label></div></div>
+
+          <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="checkbox" id="fsHtml"><label class="form-check-label" for="fsHtml">HTML</label></div></div>
+          <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="checkbox" id="fsInner"><label class="form-check-label" for="fsInner">InnerHTML</label></div></div>
+          <div class="col-md-6"><label class="form-label">Дозволені теги</label><input class="form-control" id="fsAllowed" placeholder="p,br,ul,li"></div>
+
+          <div class="col-md-3"><div class="form-check"><input class="form-check-input" type="checkbox" id="fsRmLinks"><label class="form-check-label" for="fsRmLinks">Видаляти &lt;a&gt;</label></div></div>
+          <div class="col-12"><hr></div>
+
+          <div class="col-12 d-flex justify-content-between align-items-center">
+            <h6 class="mb-0">Трансформації (знайти/замінити/regex/видалити)</h6>
+            <button class="btn btn-sm btn-outline-primary" id="fsAddTr" type="button"><i class="bi bi-plus"></i></button>
+          </div>
+          <div class="col-12">
+            <table class="table table-sm align-middle">
+              <thead><tr><th>Знайти</th><th>RegEx</th><th>Видалити</th><th>Замінити</th><th style="width:48px;"></th></tr></thead>
+              <tbody id="fsTblTr"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer"><button class="btn btn-primary" type="button" id="fsSave">Зберегти</button></div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  const BS = window.bootstrap;
+
+  // existing values
+  const existingSettings = {{ (settings or {}) | tojson | safe }};
+  const existingRules    = {{ (rules or {}) | tojson | safe }};
+
+  // --- helpers
+  function $(sel, root=document){ return root.querySelector(sel); }
+  function $all(sel, root=document){ return Array.from(root.querySelectorAll(sel)); }
+  function clamp(n, lo, hi){ n = Number(n)||0; return Math.max(lo, Math.min(hi, n)); }
+  function addRow(tplId, targetTbody, fillFn){
+    const tpl = document.getElementById(tplId);
+    const node = tpl.content.cloneNode(true);
+    const tr = node.querySelector('tr');
+    tr.querySelector('.btn-row-del').addEventListener('click', (e)=> e.currentTarget.closest('tr').remove());
+    targetTbody.appendChild(node);
+    if (fillFn) fillFn(tr);
+  }
+
+  // --- init main settings
+  const uaMode = (existingSettings.ua_mode || 'default');
+  $('#uaDefault').checked = (uaMode === 'default');
+  $('#uaCustom').checked  = (uaMode === 'custom');
+  $('#uaFake').checked    = (uaMode === 'fake');
+  $('#uaCustomVal').value = existingSettings.ua_custom || '';
+
+  $('#delay').value   = (existingSettings.delay ?? 0.2);
+  $('#threads').value = (existingSettings.threads ?? 0);
+
+  const mode = existingSettings.mode || 'cards';
+  $('#modeCategories').checked = (mode === 'categories');
+  $('#modeCards').checked      = (mode === 'cards');
+
+  $('#jsonEnabled').checked = !!existingSettings.search_json_lists;
+
+  // start URLs
+  // (already rendered in textarea)
+
+  // --- NAV tables
+  const tbCat = $('#tblCatLinks');
+  const tbPag = $('#tblPagination');
+  const tbPL  = $('#tblProdLinks');
+
+  (existingRules.navigation?.category_links || []).forEach(s => {
+    addRow('tplSelRow', tbCat, tr=>{
+      tr.querySelector('.sel-selector').value = s.selector || '';
+      tr.querySelector('.sel-type').value     = s.type || (s.is_xpath ? 'xpath' : 'css');
+    });
+  });
+  (existingRules.navigation?.pagination || []).forEach(s => {
+    addRow('tplSelRow', tbPag, tr=>{
+      tr.querySelector('.sel-selector').value = s.selector || '';
+      tr.querySelector('.sel-type').value     = s.type || (s.is_xpath ? 'xpath' : 'css');
+    });
+  });
+  (existingRules.navigation?.product_links || []).forEach(s => {
+    addRow('tplSelRow', tbPL, tr=>{
+      tr.querySelector('.sel-selector').value = s.selector || '';
+      tr.querySelector('.sel-type').value     = s.type || (s.is_xpath ? 'xpath' : 'css');
+    });
+  });
+
+  $('#prodItemSelector').value = existingRules.navigation?.product_item?.selector || '';
+  $('#prodItemType').value     = existingRules.navigation?.product_item?.type || (existingRules.navigation?.product_item?.is_xpath ? 'xpath':'css');
+
+  $('#btnAddCatLink').addEventListener('click', ()=> addRow('tplSelRow', tbCat));
+  $('#btnAddPagination').addEventListener('click', ()=> addRow('tplSelRow', tbPag));
+  $('#btnAddProdLinks').addEventListener('click', ()=> addRow('tplSelRow', tbPL));
+
+  // --- PRODUCT fields
+  const tbFields = $('#tblFields');
+  function openFieldSettings(row, isJson=false){
+    const optsEl = row.querySelector(isJson?'.jf-opts':'.f-opts');
+    let opts = {};
+    try { opts = JSON.parse(optsEl.value || '{}'); } catch(_){}
+
+    $('#fsAsList').checked = !!opts.as_list;
+    $('#fsSep').value      = opts.sep || ', ';
+    $('#fsAttr').value     = opts.attr || '';
+    $('#fsAbs').checked    = !!opts.make_absolute;
+    $('#fsHtml').checked   = !!opts.get_html;
+    $('#fsInner').checked  = !!opts.inner_html;
+    $('#fsAllowed').value  = opts.allowed_tags || '';
+    $('#fsRmLinks').checked= !!opts.remove_links;
+
+    const tBody = $('#fsTblTr'); tBody.innerHTML='';
+    const trs = Array.isArray(opts.transforms) ? opts.transforms : [];
+    if (trs.length === 0) tBody.insertAdjacentHTML('beforeend',
+      '<tr><td><input class="form-control tr-find"></td><td class="text-center"><input type="checkbox" class="form-check-input tr-regex"></td><td class="text-center"><input type="checkbox" class="form-check-input tr-delete"></td><td><input class="form-control tr-repl"></td><td><button class="btn btn-outline-danger btn-sm fs-tr-del" type="button"><i class="bi bi-x"></i></button></td></tr>');
+    else trs.forEach(t=>{
+      tBody.insertAdjacentHTML('beforeend',
+        `<tr>
+          <td><input class="form-control tr-find" value="${t.find||''}"></td>
+          <td class="text-center"><input type="checkbox" class="form-check-input tr-regex" ${t.regex?'checked':''}></td>
+          <td class="text-center"><input type="checkbox" class="form-check-input tr-delete" ${t.delete?'checked':''}></td>
+          <td><input class="form-control tr-repl" value="${t.replace||''}"></td>
+          <td><button class="btn btn-outline-danger btn-sm fs-tr-del" type="button"><i class="bi bi-x"></i></button></td>
+        </tr>`);
+    });
+    $all('.fs-tr-del', tBody).forEach(btn => btn.addEventListener('click', e=> e.currentTarget.closest('tr').remove()));
+
+    $('#fsAddTr').onclick = ()=> {
+      tBody.insertAdjacentHTML('beforeend',
+        '<tr><td><input class="form-control tr-find"></td><td class="text-center"><input type="checkbox" class="form-check-input tr-regex"></td><td class="text-center"><input type="checkbox" class="form-check-input tr-delete"></td><td><input class="form-control tr-repl"></td><td><button class="btn btn-outline-danger btn-sm fs-tr-del" type="button"><i class="bi bi-x"></i></button></td></tr>');
+      $all('.fs-tr-del', tBody).forEach(btn => btn.addEventListener('click', e=> e.currentTarget.closest('tr').remove()));
+    };
+
+    $('#fsSave').onclick = ()=> {
+      const o = {
+        as_list: $('#fsAsList').checked,
+        sep: $('#fsSep').value || ', ',
+        attr: $('#fsAttr').value || '',
+        make_absolute: $('#fsAbs').checked,
+        get_html: $('#fsHtml').checked,
+        inner_html: $('#fsInner').checked,
+        allowed_tags: $('#fsAllowed').value || '',
+        remove_links: $('#fsRmLinks').checked,
+        transforms: $all('#fsTblTr tr').map(tr=>({
+          find: tr.querySelector('.tr-find').value,
+          replace: tr.querySelector('.tr-repl').value,
+          regex: tr.querySelector('.tr-regex').checked,
+          delete: tr.querySelector('.tr-delete').checked
+        })).filter(t=> t.find || t.replace || t.regex || t.delete)
+      };
+      optsEl.value = JSON.stringify(o);
+      BS && BS.Modal.getOrCreateInstance('#fieldSettingsModal').hide();
+    };
+
+    BS && BS.Modal.getOrCreateInstance('#fieldSettingsModal').show();
+  }
+
+  (existingRules.product?.fields || []).forEach(f=>{
+    addRow('tplFieldRow', tbFields, tr=>{
+      tr.querySelector('.f-order').value = f.order || 1;
+      tr.querySelector('.f-export').checked = (f.export !== false);
+      tr.querySelector('.f-key').value = f.key || '';
+      tr.querySelector('.f-type').value = f.type || (f.is_xpath ? 'xpath' : (f.regex ? 'regex' : 'css'));
+      tr.querySelector('.f-selector').value = f.selector || f.regex || '';
+      tr.querySelector('.f-opts').value = JSON.stringify(f.opts || {
+        as_list: !!f.as_list, sep: f.sep || ', ',
+        attr: f.attr || '', make_absolute: !!f.make_absolute,
+        get_html: !!f.get_html, inner_html: !!f.inner_html,
+        allowed_tags: f.allowed_tags || '', remove_links: !!f.remove_links,
+        transforms: f.transforms || []
+      });
+      tr.querySelector('.f-settings').addEventListener('click', ()=> openFieldSettings(tr, false));
+    });
+  });
+  $('#btnAddField').addEventListener('click', ()=> addRow('tplFieldRow', tbFields, tr=>{
+    tr.querySelector('.f-order').value = (tbFields.querySelectorAll('tr').length);
+    tr.querySelector('.f-settings').addEventListener('click', ()=> openFieldSettings(tr, false));
+  }));
+
+  // --- JSON fields
+  const tbJsonFields = $('#tblJsonFields');
+  (existingRules.json?.fields || []).forEach(f=>{
+    addRow('tplJsonFieldRow', tbJsonFields, tr=>{
+      tr.querySelector('.jf-export').checked = (f.export !== false);
+      tr.querySelector('.jf-key').value = f.key || '';
+      tr.querySelector('.jf-order').value = f.from_order || 1;
+      tr.querySelector('.jf-selector').value = f.selector || '';
+      tr.querySelector('.jf-opts').value = JSON.stringify(f.opts || {as_list:false, sep:', ', transforms:[]});
+      tr.querySelector('.jf-settings').addEventListener('click', ()=> openFieldSettings(tr, true));
+    });
+  });
+  $('#btnAddJsonField').addEventListener('click', ()=> addRow('tplJsonFieldRow', tbJsonFields, tr=>{
+    tr.querySelector('.jf-settings').addEventListener('click', ()=> openFieldSettings(tr, true));
+  }));
+
+  $('#jsonFromOrders').value = (existingRules.json?.from_orders || []).join(', ');
+
+  // --- collect
+  function collectSelRows(tbody){
+    return $all('tr', tbody).map(tr=>{
+      const selector = tr.querySelector('.sel-selector')?.value.trim();
+      const type = tr.querySelector('.sel-type')?.value || 'css';
+      if (!selector) return null;
+      return { selector, type };
+    }).filter(Boolean);
+  }
+  function collectFields(){
+    return $all('#tblFields tr').map(tr=>{
+      const order = parseInt(tr.querySelector('.f-order').value||'1',10);
+      const exp   = tr.querySelector('.f-export').checked;
+      const key   = tr.querySelector('.f-key').value.trim();
+      const type  = tr.querySelector('.f-type').value;
+      const sel   = tr.querySelector('.f-selector').value.trim();
+      let opts = {}; try { opts = JSON.parse(tr.querySelector('.f-opts').value||'{}'); } catch(_){}
+      if (!key || !sel) return null;
+      return { order, export: exp, key, type, selector: sel, opts };
+    }).filter(Boolean).sort((a,b)=> a.order-b.order);
+  }
+  function collectJsonFields(){
+    return $all('#tblJsonFields tr').map(tr=>{
+      const exp  = tr.querySelector('.jf-export').checked;
+      const key  = tr.querySelector('.jf-key').value.trim();
+      const ord  = parseInt(tr.querySelector('.jf-order').value||'1',10);
+      const sel  = tr.querySelector('.jf-selector').value.trim();
+      let opts = {}; try { opts = JSON.parse(tr.querySelector('.jf-opts').value||'{}'); } catch(_){}
+      if (!key || !sel) return null;
+      return { export: exp, key, from_order: ord, selector: sel, opts };
+    }).filter(Boolean);
+  }
+  function collectSettings(){
+    const uaMode = document.querySelector('input[name="uaMode"]:checked')?.value || 'default';
+    const uaCustom = $('#uaCustomVal').value.trim();
+    const delay = clamp($('#delay').value, 0, 999);
+    const threads = clamp($('#threads').value, 0, 99);
+    const mode = document.querySelector('input[name="mode"]:checked')?.value || 'cards';
+    const jsonEnabled = $('#jsonEnabled').checked;
+    const testNav = $('#testUrlNav')?.value?.trim() || '';
+    const testProd= $('#testUrlProd')?.value?.trim() || '';
+    return {
+      ua_mode: uaMode,
+      ua_custom: uaCustom,
+      delay, threads, mode,
+      search_json_lists: jsonEnabled,
+      test_urls: { categories: testNav, listing: testNav, product: testProd }
+    };
+  }
+  function collectRules(){
+    const rules = {
+      navigation: {
+        category_links: collectSelRows(tbCat),
+        pagination: collectSelRows(tbPag),
+        product_links: collectSelRows(tbPL),
+        product_item: {
+          selector: $('#prodItemSelector').value.trim(),
+          type: $('#prodItemType').value
+        }
+      },
+      product: { fields: collectFields() },
+      json: {
+        enabled: $('#jsonEnabled').checked,
+        from_orders: ($('#jsonFromOrders').value || '')
+          .split(',').map(s=>parseInt(s.trim(),10)).filter(n=>!isNaN(n)),
+        fields: collectJsonFields()
+      }
+    };
+    return rules;
+  }
+
+  // submit
+  $('#scraperForm')?.addEventListener('submit', (e)=>{
+    const startUrls = ($('#startUrls').value||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+    if (startUrls.length === 0) {
+      e.preventDefault();
+      alert('Вкажіть хоча б один стартовий URL у «Початкові посилання».');
+      return;
+    }
+    $('#start_urls_json').value = JSON.stringify(startUrls);
+    $('#settings_json').value   = JSON.stringify(collectSettings());
+    $('#rules_json').value      = JSON.stringify(collectRules());
+  });
+
+  // testing
+  async function test(block, url){
+    if (!url){ alert('Вкажіть URL для тесту'); return; }
+    const fd = new FormData();
+    fd.append('url', url);
+    fd.append('block', block); // 'navigation' | 'product'
+    const res = await fetch('/ui/scrapers/{{ item.id if item else 0 }}/test', {method:'POST', body: fd});
+    const data = await res.json();
+    if (!data.ok){ alert(data.message || 'Помилка'); return; }
+    $('#testLeft').textContent  = JSON.stringify(data.data.items||[], null, 2);
+    $('#testRight').textContent = data.data.html || '';
+    BS && BS.Modal.getOrCreateInstance('#testModal').show();
+  }
+  $('#btnTestNav')?.addEventListener('click', ()=> test('navigation', $('#testUrlNav').value.trim()));
+  $('#btnTestProd')?.addEventListener('click', ()=> test('product', $('#testUrlProd').value.trim()));
+
+  // run stream
+  {% if item %}
+  const btnRun = $('#btnRun');
+  const runModal = BS && BS.Modal.getOrCreateInstance('#runModal');
+  const runLog = $('#runLog'), runStats = $('#runStats'), runProgress = $('#runProgress'), runFileLink = $('#runFileLink');
+
+  function appendLog(line){ runLog.textContent += line + "\n"; runLog.scrollTop = runLog.scrollHeight; }
+  function setProgress(done,total){ const p = (!total?0:Math.min(100, Math.round(done*100/total))); runProgress.style.width=p+'%'; runProgress.textContent=p+'%'; }
+
+  btnRun?.addEventListener('click', ()=>{
+    btnRun.disabled = true; btnRun.querySelector('i').className='bi bi-arrow-repeat';
+    runLog.textContent=''; runStats.textContent=''; setProgress(0,100); runFileLink.classList.add('d-none');
+    runModal && runModal.show();
+
+    const es = new EventSource('/ui/scrapers/{{ item.id }}/run-stream');
+    es.onmessage = (ev)=>{
+      try{
+        const d = JSON.parse(ev.data);
+        if (d.type==='log') appendLog(d.message);
+        else if (d.type==='progress'){
+          if (d.phase==='crawl') runStats.textContent = `Сторінок: ${d.pages_done} • У черзі: ${d.queue} • Товарів: ${d.products}`;
+          if (d.phase==='products'){ setProgress(d.done,d.total); runStats.textContent = `Карток: ${d.done} / ${d.total}`; }
+        } else if (d.type==='done'){
+          appendLog(`Готово. Товарів: ${d.stats.products}, сторінок: ${d.stats.pages}`);
+          if (d.file_url){ runFileLink.href=d.file_url; runFileLink.classList.remove('d-none'); }
+          es.close(); btnRun.disabled=false; btnRun.querySelector('i').className='bi bi-cloud-download';
+        } else if (d.type==='error'){
+          appendLog('ПОМИЛКА: '+d.message);
+        }
+      }catch(e){ appendLog('ПОМИЛКА повідомлення: '+(e.message||e)); }
+    };
+    es.onerror = ()=>{
+      appendLog('Зʼєднання перервано.');
+      es.close(); btnRun.disabled=false; btnRun.querySelector('i').className='bi bi-cloud-download';
+    };
+  });
+  {% endif %}
+})();
+</script>
+{% endblock %}
